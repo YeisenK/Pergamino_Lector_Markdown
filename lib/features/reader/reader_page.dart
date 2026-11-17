@@ -39,6 +39,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   bool _restored = false;
   late final BooksNotifier _notifier;
 
+  // scroll rápido (barra de progreso arrastrable)
+  bool _scrubbing = false;
+  double _scrubFrac = 0;
+  int _scrubChapter = -1;
+  Timer? _scrubHide;
+
   // brillo
   double? _brightness;
   bool _showBrightness = false;
@@ -58,6 +64,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     _positions.itemPositions.removeListener(_onScroll);
     _debounce?.cancel();
     _brightnessHide?.cancel();
+    _scrubHide?.cancel();
     _persist();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
@@ -110,6 +117,40 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       if (mounted) setState(() => _showBrightness = false);
     });
     if (mounted) setState(() => _showBrightness = true);
+  }
+
+  void _scrubStart(DragStartDetails d, double width, BookContent c) {
+    _scrubHide?.cancel();
+    HapticFeedback.selectionClick();
+    setState(() {
+      _scrubbing = true;
+      _scrubChapter = -1;
+    });
+    _scrubTo(d.localPosition.dx, width, c);
+  }
+
+  void _scrubTo(double dx, double width, BookContent c) {
+    const pad = 24.0;
+    final f = ((dx - pad) / (width - pad * 2)).clamp(0.0, 1.0);
+    final idx = (f * (c.blocks.length - 1)).round();
+    var ch = 0;
+    for (var i = 0; i < c.chapterStarts.length; i++) {
+      if (c.chapterStarts[i] <= idx) ch = i;
+    }
+    if (ch != _scrubChapter && _scrubChapter != -1) HapticFeedback.selectionClick();
+    _items.jumpTo(index: idx);
+    setState(() {
+      _scrubFrac = f;
+      _scrubChapter = ch;
+    });
+  }
+
+  void _scrubEnd() {
+    _persist();
+    _scrubHide?.cancel();
+    _scrubHide = Timer(const Duration(milliseconds: 700), () {
+      if (mounted) setState(() => _scrubbing = false);
+    });
   }
 
   Future<void> _openMenu(BookContent c, {int tab = 0}) async {
@@ -246,22 +287,37 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
             onVerticalDragUpdate: (d) => _dragBrightness(d, box.maxHeight),
           ),
         ),
-        // progreso fino: solo visible junto con los controles
+        // barra de progreso: visible con los controles; un gesto en la zona
+        // inferior la agranda y funciona como scroll rápido
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
           child: IgnorePointer(
             child: AnimatedOpacity(
-              opacity: _controls ? 1 : 0,
+              opacity: (_controls || _scrubbing) ? 1 : 0,
               duration: const Duration(milliseconds: 220),
-              child: LinearProgressIndicator(
-                value: _progress,
-                minHeight: 3,
-                color: palette.accent,
-                backgroundColor: palette.text.withValues(alpha: .08),
+              child: _ScrubBar(
+                progress: _scrubbing ? _scrubFrac : _progress,
+                expanded: _scrubbing,
+                width: box.maxWidth,
+                palette: palette,
+                label: _scrubChapter >= 0 ? c.chapterTitles[_scrubChapter] : '',
               ),
             ),
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 8,
+          height: 44,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onPanStart: (d) => _scrubStart(d, box.maxWidth, c),
+            onPanUpdate: (d) => _scrubTo(d.localPosition.dx, box.maxWidth, c),
+            onPanEnd: (_) => _scrubEnd(),
+            onPanCancel: _scrubEnd,
           ),
         ),
         // indicador de brillo
@@ -373,5 +429,112 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         ),
       ]);
     });
+  }
+}
+
+class _ScrubBar extends StatelessWidget {
+  const _ScrubBar({
+    required this.progress,
+    required this.expanded,
+    required this.width,
+    required this.palette,
+    required this.label,
+  });
+  final double progress;
+  final bool expanded;
+  final double width;
+  final ReaderPalette palette;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    const pad = 24.0;
+    final trackH = expanded ? 10.0 : 3.0;
+    final inner = width - pad * 2;
+    final x = pad + inner * progress.clamp(0.0, 1.0);
+    return SizedBox(
+      height: 120,
+      width: width,
+      child: Stack(clipBehavior: Clip.none, children: [
+        // burbuja con capítulo y porcentaje
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 52,
+          child: AnimatedOpacity(
+            opacity: expanded ? 1 : 0,
+            duration: const Duration(milliseconds: 150),
+            child: Center(
+              child: Container(
+                constraints: BoxConstraints(maxWidth: width - 48),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: palette.isDark
+                      ? palette.text.withValues(alpha: .18)
+                      : palette.text.withValues(alpha: .92),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('${(progress * 100).round()} %',
+                      style: TextStyle(
+                          color: palette.isDark ? palette.text : palette.background,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700)),
+                  if (label.isNotEmpty)
+                    Text(label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: (palette.isDark ? palette.text : palette.background)
+                                .withValues(alpha: .8),
+                            fontSize: 13)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+        // pista
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          left: expanded ? pad : 0,
+          right: expanded ? pad : 0,
+          bottom: expanded ? 28 : 0,
+          height: trackH,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(expanded ? 6 : 0),
+            child: Stack(children: [
+              Positioned.fill(
+                  child: ColoredBox(color: palette.text.withValues(alpha: .14))),
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: (expanded ? inner : width) * progress.clamp(0.0, 1.0),
+                child: ColoredBox(color: palette.accent),
+              ),
+            ]),
+          ),
+        ),
+        // tirador
+        if (expanded)
+          Positioned(
+            left: x - 13,
+            bottom: 28 + trackH / 2 - 13,
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: palette.accent,
+                shape: BoxShape.circle,
+                border: Border.all(color: palette.background, width: 3),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x44000000), blurRadius: 6),
+                ],
+              ),
+            ),
+          ),
+      ]),
+    );
   }
 }
