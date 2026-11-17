@@ -53,3 +53,14 @@ class Book {
       .map((e) => Book.fromJson(e as Map<String, dynamic>))
       .toList();
 }
+
+/// Separa «Capítulo 1 — El círculo» en (antetítulo: «Capítulo 1», título: «El círculo»)
+/// usando el primer guion largo (—). Sin guion largo no hay antetítulo.
+({String? kicker, String main}) splitTitle(String title) {
+  final i = title.indexOf('—');
+  if (i < 0) return (kicker: null, main: title.trim());
+  final kicker = title.substring(0, i).trim();
+  final main = title.substring(i + 1).trim();
+  if (kicker.isEmpty || main.isEmpty) return (kicker: null, main: title.replaceAll('—', ' ').trim());
+  return (kicker: kicker, main: main);
+}

@@ -342,17 +342,42 @@ class _BookCard extends StatelessWidget {
                     ),
                   Align(
                     alignment: Alignment.bottomLeft,
-                    child: Text(
-                      book.title,
-                      maxLines: 6,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.literata(
-                        color: Colors.white.withValues(alpha: .92),
-                        fontSize: 16,
-                        height: 1.25,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    child: Builder(builder: (context) {
+                      final t = splitTitle(book.title);
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (t.kicker != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                t.kicker!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.literata(
+                                  color: Colors.white.withValues(alpha: .7),
+                                  fontSize: 11,
+                                  height: 1.2,
+                                  letterSpacing: .6,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          Text(
+                            t.main,
+                            maxLines: 6,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.literata(
+                              color: Colors.white.withValues(alpha: .92),
+                              fontSize: 16,
+                              height: 1.25,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
                   ),
                 ],
               ),
