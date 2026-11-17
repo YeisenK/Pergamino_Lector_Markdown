@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,157 +20,272 @@ class LibraryPage extends ConsumerStatefulWidget {
 class _LibraryPageState extends ConsumerState<LibraryPage> {
   String _query = '';
 
+  final Set<String> _selected = {};
+  bool get _selecting => _selected.isNotEmpty;
+
   Future<void> _import() async {
-    final book = await ref.read(booksProvider.notifier).importFromPicker();
-    if (book != null && mounted) context.push('/read/${book.id}');
+    final r = await ref.read(booksProvider.notifier).importFromPicker();
+    if (r == null || !mounted) return;
+    if (r.added.length == 1 && r.skipped == 0) {
+      context.push('/read/${r.added.first.id}');
+      return;
+    }
+    final n = r.added.length;
+    final msg = [
+      if (n > 0) '$n ${n == 1 ? 'libro importado' : 'libros importados'}',
+      if (r.skipped > 0)
+        '${r.skipped} ${r.skipped == 1 ? 'archivo omitido' : 'archivos omitidos'} (solo .md, .markdown o .txt)',
+    ].join(' · ');
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Future<void> _confirmDelete(Book b) async {
+  void _toggle(Book b) {
+    HapticFeedback.selectionClick();
+    setState(
+      () => _selected.contains(b.id)
+          ? _selected.remove(b.id)
+          : _selected.add(b.id),
+    );
+  }
+
+  Future<void> _deleteSelected(List<Book> all) async {
+    final chosen = all.where((b) => _selected.contains(b.id)).toList();
+    if (chosen.isEmpty) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Eliminar libro'),
-        content: Text('«${b.title}» se quitará de tu biblioteca.'),
+        title: Text(
+          chosen.length == 1
+              ? 'Eliminar libro'
+              : 'Eliminar ${chosen.length} libros',
+        ),
+        content: Text(
+          chosen.length == 1
+              ? '«${chosen.first.title}» se quitará de tu biblioteca, con sus marcadores y notas.'
+              : 'Se quitarán de tu biblioteca, con sus marcadores y notas.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: const Text('Cancelar')),
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancelar'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(c, true),
-              child: const Text('Eliminar')),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Eliminar'),
+          ),
         ],
       ),
     );
-    if (ok == true) {
+    if (ok != true) return;
+    for (final b in chosen) {
       ref.read(bookmarksProvider.notifier).removeBook(b.id);
       ref.read(highlightsProvider.notifier).removeBook(b.id);
-      ref.read(booksProvider.notifier).remove(b);
     }
+    await ref.read(booksProvider.notifier).removeMany(chosen);
+    if (mounted) setState(_selected.clear);
   }
+
+  Widget _selectionBar(List<Book> all) => Row(
+    children: [
+      IconButton(
+        tooltip: 'Cancelar selección',
+        icon: const Icon(Icons.close),
+        onPressed: () => setState(_selected.clear),
+      ),
+      Expanded(
+        child: Text(
+          '${_selected.length} seleccionado${_selected.length == 1 ? '' : 's'}',
+          style: GoogleFonts.literata(
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      IconButton(
+        tooltip: 'Seleccionar todos',
+        icon: const Icon(Icons.select_all),
+        onPressed: () => setState(() => _selected.addAll(all.map((b) => b.id))),
+      ),
+      IconButton(
+        tooltip: 'Eliminar seleccionados',
+        icon: const Icon(Icons.delete_outline),
+        onPressed: () => _deleteSelected(all),
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
     final books = ref.watch(booksProvider);
     final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      body: SafeArea(
-        child: CustomScrollView(slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 28, 24, 8),
-              child: Row(children: [
-                Expanded(
-                  child: Text('Biblioteca',
-                      style: GoogleFonts.literata(
-                          fontSize: 34, fontWeight: FontWeight.w600)),
-                ),
-                IconButton(
-                  tooltip: 'Voces',
-                  icon: const Icon(Icons.record_voice_over_outlined),
-                  onPressed: () => context.push('/voices'),
-                ),
-                IconButton(
-                  tooltip: 'Tema',
-                  icon: const Icon(Icons.palette_outlined),
-                  onPressed: () => showModalBottomSheet(
-                    context: context,
-                    showDragHandle: true,
-                    builder: (_) => const TypographySheet(paletteOnly: true),
-                  ),
-                ),
-              ]),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-              child: TextField(
-                onChanged: (v) => setState(() => _query = v.toLowerCase()),
-                decoration: InputDecoration(
-                  hintText: 'Buscar',
-                  prefixIcon: const Icon(Icons.search),
-                  filled: true,
-                  fillColor: scheme.onSurface.withValues(alpha: .06),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none),
+    final all = books.value ?? <Book>[];
+
+    return PopScope(
+      canPop: !_selecting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) setState(_selected.clear);
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 8),
+                  child: _selecting
+                      ? _selectionBar(all)
+                      : Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Biblioteca',
+                                style: GoogleFonts.literata(
+                                  fontSize: 34,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Voces',
+                              icon: const Icon(
+                                Icons.record_voice_over_outlined,
+                              ),
+                              onPressed: () => context.push('/voices'),
+                            ),
+                            IconButton(
+                              tooltip: 'Tema',
+                              icon: const Icon(Icons.palette_outlined),
+                              onPressed: () => showModalBottomSheet(
+                                context: context,
+                                showDragHandle: true,
+                                builder: (_) =>
+                                    const TypographySheet(paletteOnly: true),
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
               ),
-            ),
-          ),
-          books.when(
-            loading: () => const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator())),
-            error: (e, _) =>
-                SliverFillRemaining(child: Center(child: Text('$e'))),
-            data: (list) {
-              final shown = list
-                  .where((b) => b.title.toLowerCase().contains(_query))
-                  .toList()
-                ..sort((a, b) => (b.lastOpened ?? b.addedAt)
-                    .compareTo(a.lastOpened ?? a.addedAt));
-              if (list.isEmpty) {
-                return SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.auto_stories_outlined,
-                              size: 56,
-                              color: scheme.onSurface.withValues(alpha: .4)),
-                          const SizedBox(height: 16),
-                          Text('Aún no tienes libros',
-                              style: Theme.of(context).textTheme.titleMedium),
-                          const SizedBox(height: 8),
-                          Text('Importa un archivo .md para empezar a leer.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  color:
-                                      scheme.onSurface.withValues(alpha: .6))),
-                        ],
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                  child: TextField(
+                    onChanged: (v) => setState(() => _query = v.toLowerCase()),
+                    decoration: InputDecoration(
+                      hintText: 'Buscar',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: scheme.onSurface.withValues(alpha: .06),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
                       ),
                     ),
                   ),
-                );
-              }
-              return SliverPadding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
-                sliver: SliverGrid.builder(
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 200,
-                    mainAxisSpacing: 20,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: .58,
-                  ),
-                  itemCount: shown.length,
-                  itemBuilder: (_, i) => _BookCard(
-                    book: shown[i],
-                    onTap: () => context.push('/read/${shown[i].id}'),
-                    onLongPress: () => _confirmDelete(shown[i]),
-                  ),
                 ),
-              );
-            },
+              ),
+              books.when(
+                loading: () => const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (e, _) =>
+                    SliverFillRemaining(child: Center(child: Text('$e'))),
+                data: (list) {
+                  final shown =
+                      list
+                          .where((b) => b.title.toLowerCase().contains(_query))
+                          .toList()
+                        ..sort(
+                          (a, b) => (b.lastOpened ?? b.addedAt).compareTo(
+                            a.lastOpened ?? a.addedAt,
+                          ),
+                        );
+                  if (list.isEmpty) {
+                    return SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.auto_stories_outlined,
+                                size: 56,
+                                color: scheme.onSurface.withValues(alpha: .4),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Aún no tienes libros',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Importa un archivo .md para empezar a leer.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: scheme.onSurface.withValues(alpha: .6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  return SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
+                    sliver: SliverGrid.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 200,
+                            mainAxisSpacing: 20,
+                            crossAxisSpacing: 16,
+                            childAspectRatio: .58,
+                          ),
+                      itemCount: shown.length,
+                      itemBuilder: (_, i) => _BookCard(
+                        book: shown[i],
+                        selecting: _selecting,
+                        selected: _selected.contains(shown[i].id),
+                        onTap: () => _selecting
+                            ? _toggle(shown[i])
+                            : context.push('/read/${shown[i].id}'),
+                        onLongPress: () => _toggle(shown[i]),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
-        ]),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _import,
-        icon: const Icon(Icons.add),
-        label: const Text('Importar'),
+        ),
+        floatingActionButton: _selecting
+            ? null
+            : FloatingActionButton.extended(
+                onPressed: _import,
+                icon: const Icon(Icons.add),
+                label: const Text('Importar'),
+              ),
       ),
     );
   }
 }
 
 class _BookCard extends StatelessWidget {
-  const _BookCard(
-      {required this.book, required this.onTap, required this.onLongPress});
+  const _BookCard({
+    required this.book,
+    required this.onTap,
+    required this.onLongPress,
+    this.selecting = false,
+    this.selected = false,
+  });
   final Book book;
+  final bool selecting;
+  final bool selected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -194,25 +310,51 @@ class _BookCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: _cover,
                 borderRadius: BorderRadius.circular(8),
+                border: selected
+                    ? Border.all(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 3,
+                      )
+                    : null,
                 boxShadow: const [
                   BoxShadow(
-                      color: Color(0x33000000),
-                      blurRadius: 10,
-                      offset: Offset(0, 4)),
+                    color: Color(0x33000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
                 ],
               ),
-              child: Align(
-                alignment: Alignment.bottomLeft,
-                child: Text(
-                  book.title,
-                  maxLines: 6,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.literata(
-                      color: Colors.white.withValues(alpha: .92),
-                      fontSize: 16,
-                      height: 1.25,
-                      fontWeight: FontWeight.w600),
-                ),
+              child: Stack(
+                children: [
+                  if (selecting)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: Icon(
+                        selected
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color: Colors.white.withValues(
+                          alpha: selected ? 1 : .7,
+                        ),
+                        size: 24,
+                      ),
+                    ),
+                  Align(
+                    alignment: Alignment.bottomLeft,
+                    child: Text(
+                      book.title,
+                      maxLines: 6,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.literata(
+                        color: Colors.white.withValues(alpha: .92),
+                        fontSize: 16,
+                        height: 1.25,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -222,8 +364,8 @@ class _BookCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: book.progress,
               minHeight: 3,
-              backgroundColor:
-                  Theme.of(context).colorScheme.onSurface.withValues(alpha: .1),
+              backgroundColor: Theme.of(context).colorScheme.onSurface
+                  .withValues(alpha: .1),
             ),
           ),
           const SizedBox(height: 4),

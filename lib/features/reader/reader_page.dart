@@ -441,7 +441,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         Positioned(
           left: 0,
           top: top + 80,
-          bottom: 80,
+          bottom: 140,
           width: 28,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
@@ -491,14 +491,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
               onHorizontalDragCancel: _scrubEnd,
             ),
           ),
-        // icono pequeño y semitransparente para abrir la barra
+        // icono pequeño y semitransparente (a la izquierda) para abrir la barra
         Positioned(
-          right: 8,
+          left: 8,
           bottom: scrubIconBottom,
           child: IgnorePointer(
-            ignoring: _scrubbing,
+            ignoring: _scrubbing || !_controls,
             child: AnimatedOpacity(
-              opacity: _scrubbing ? 0 : (_controls ? .8 : .3),
+              // solo visible cuando se muestran los controles (toque central)
+              opacity: (_scrubbing || !_controls) ? 0 : .7,
               duration: const Duration(milliseconds: 200),
               child: Semantics(
                 button: true,

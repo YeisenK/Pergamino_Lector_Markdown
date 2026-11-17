@@ -27,12 +27,28 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
     await prefs.setString(_kBooks, Book.encodeList(books));
   }
 
-  /// Abre el selector del sistema e importa un .md. Devuelve el libro o null.
-  Future<Book?> importFromPicker() async {
+  static const _okExt = {'.md', '.markdown', '.mdown', '.txt'};
+
+  /// Abre el selector del sistema (varios archivos) e importa los .md.
+  /// Devuelve null si se cancela. `skipped` cuenta los que no se pudieron importar.
+  Future<({List<Book> added, int skipped})?> importFromPicker() async {
     final res = await FilePicker.pickFiles(type: FileType.any);
-    final src = res.isEmpty ? null : res.first.path;
-    if (src == null) return null;
-    return importFile(File(src));
+    if (res.isEmpty) return null;
+    final added = <Book>[];
+    var skipped = 0;
+    for (final f in res) {
+      final path = f.path;
+      if (path == null || !_okExt.contains(p.extension(path).toLowerCase())) {
+        skipped++;
+        continue;
+      }
+      try {
+        added.add(await importFile(File(path)));
+      } catch (_) {
+        skipped++;
+      }
+    }
+    return (added: added, skipped: skipped);
   }
 
   Future<Book> importFile(File file, {String? name}) async {
@@ -41,7 +57,13 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
     await dir.create(recursive: true);
     final id = DateTime.now().microsecondsSinceEpoch.toString();
     final dest = await file.copy(p.join(dir.path, '$id.md'));
-    final text = await dest.readAsString();
+    final String text;
+    try {
+      text = await dest.readAsString();
+    } catch (_) {
+      await dest.delete(); // no era texto válido
+      rethrow;
+    }
     final book = Book(
       id: id,
       title: _extractTitle(text, p.basenameWithoutExtension(name ?? file.path)),
@@ -50,6 +72,16 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
     );
     await _save([book, ...state.value ?? []]);
     return book;
+  }
+
+  Future<void> removeMany(Iterable<Book> books) async {
+    final ids = books.map((b) => b.id).toSet();
+    for (final b in books) {
+      try {
+        await File(b.path).delete();
+      } catch (_) {}
+    }
+    await _save((state.value ?? []).where((x) => !ids.contains(x.id)).toList());
   }
 
   Future<void> remove(Book b) async {
