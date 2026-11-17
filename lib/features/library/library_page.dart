@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../data/book_repository.dart';
 import '../../data/bookmarks.dart';
+import '../../data/highlights.dart';
 import '../reader/typography_sheet.dart';
 import '../../domain/book.dart';
 
@@ -41,6 +42,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     );
     if (ok == true) {
       ref.read(bookmarksProvider.notifier).removeBook(b.id);
+      ref.read(highlightsProvider.notifier).removeBook(b.id);
       ref.read(booksProvider.notifier).remove(b);
     }
   }

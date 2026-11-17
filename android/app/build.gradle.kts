@@ -16,6 +16,10 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
+    buildFeatures {
+        resValues = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -34,6 +38,7 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        resValue("string", "app_name", "Pergamino")
     }
 
     signingConfigs {
@@ -48,6 +53,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // La variante de depuración se instala aparte («Pergamino Dev») con su propio almacenamiento.
+            applicationIdSuffix = ".dev"
+            resValue("string", "app_name", "Pergamino Dev")
+        }
         release {
             // Firma con tu llave si existe android/key.properties; si no, con la de debug.
             signingConfig = signingConfigs.findByName("release")

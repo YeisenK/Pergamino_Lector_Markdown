@@ -11,9 +11,11 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../app/theme.dart';
 import '../../data/book_repository.dart';
 import '../../data/bookmarks.dart';
+import '../../data/highlights.dart';
 import '../../data/settings.dart';
 import '../../domain/book.dart';
 import 'book_search.dart';
+import 'highlight_sheet.dart';
 import 'md_renderer.dart';
 import 'reader_content.dart';
 import 'reader_menu_sheet.dart';
@@ -97,14 +99,82 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   void _persist() => _notifier.updateProgress(widget.bookId, _progress);
 
-  void _onTap(TapUpDetails d, double width) {
-    final x = d.localPosition.dx / width;
-    if (x > .3 && x < .7) {
-      HapticFeedback.selectionClick();
-      setState(() => _controls = !_controls);
-    } else if (_controls) {
-      setState(() => _controls = false);
+  // Detección de toques propia: el texto seleccionable consume los toques,
+  // así que se observan los eventos de puntero directamente.
+  Offset? _downPos;
+  Duration _downTime = Duration.zero;
+  Duration _lastTapTime = Duration(days: -1);
+  Offset _lastTapPos = Offset.zero;
+  bool _lastToggled = false;
+  bool _hlTapped = false;
+
+  void _pointerUp(PointerUpEvent e, double width) {
+    final down = _downPos;
+    _downPos = null;
+    if (down == null) return;
+    if ((e.position - down).distance > 14 ||
+        e.timeStamp - _downTime > const Duration(milliseconds: 300)) {
+      return;
     }
+    // doble toque (seleccionar palabra): deshace el cambio del primer toque
+    if (e.timeStamp - _lastTapTime < const Duration(milliseconds: 350) &&
+        (e.position - _lastTapPos).distance < 40) {
+      _lastTapTime = Duration(days: -1);
+      if (_lastToggled) setState(() => _controls = !_controls);
+      _lastToggled = false;
+      return;
+    }
+    _lastTapTime = e.timeStamp;
+    _lastTapPos = e.position;
+    final x = e.position.dx / width;
+    // deja que un toque sobre un subrayado lo atienda primero
+    Timer(Duration.zero, () {
+      if (!mounted) return;
+      if (_hlTapped) {
+        _hlTapped = false;
+        _lastToggled = false;
+        return;
+      }
+      if (x > .3 && x < .7) {
+        HapticFeedback.selectionClick();
+        setState(() => _controls = !_controls);
+        _lastToggled = true;
+      } else if (_controls) {
+        setState(() => _controls = false);
+        _lastToggled = true;
+      } else {
+        _lastToggled = false;
+      }
+    });
+  }
+
+  String _chapterOf(BookContent c, int block) {
+    var ch = 0;
+    for (var i = 0; i < c.chapterStarts.length; i++) {
+      if (c.chapterStarts[i] <= block) ch = i;
+    }
+    return c.chapterTitles[ch];
+  }
+
+  final HlColor _lastColor = HlColor.yellow;
+
+  void _onSelect(BookContent c, int block, int part, int start, int end,
+      String text, bool withNote) {
+    final h = Highlight(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      bookId: widget.bookId,
+      block: block,
+      part: part,
+      start: start,
+      end: end,
+      text: text,
+      color: _lastColor,
+      chapter: _chapterOf(c, block),
+      createdAt: DateTime.now(),
+    );
+    ref.read(highlightsProvider.notifier).add(h);
+    HapticFeedback.mediumImpact();
+    if (withNote) showHighlightSheet(context, h.id);
   }
 
   Future<void> _dragBrightness(DragUpdateDetails d, double height) async {
@@ -155,7 +225,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   Future<void> _openMenu(BookContent c, {int tab = 0}) async {
     final idx = await showReaderMenu(context,
-        bookId: widget.bookId, content: c, currentIndex: _first, initialTab: tab);
+        bookId: widget.bookId,
+        title: ref.read(booksProvider).value?.where((b) => b.id == widget.bookId).firstOrNull?.title ?? '',
+        content: c,
+        currentIndex: _first,
+        initialTab: tab);
     if (idx != null && mounted) {
       setState(() => _controls = false);
       _items.scrollTo(
@@ -259,21 +333,55 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     final top = MediaQuery.paddingOf(context).top;
     final marks = ref.watch(bookmarksProvider);
     final marked = _hasBookmarkVisible(marks);
+    final marksByBlock = <int, List<Mark>>{};
+    for (final h in ref.watch(highlightsProvider)) {
+      if (h.bookId != widget.bookId) continue;
+      (marksByBlock[h.block] ??= []).add(Mark(
+        key: h.id,
+        part: h.part,
+        start: h.start,
+        end: h.end,
+        color: h.color.color.withValues(alpha: .38),
+        underline: (h.note ?? '').trim().isNotEmpty,
+        onTap: () {
+          _hlTapped = true;
+          showHighlightSheet(context, h.id);
+        },
+      ));
+    }
 
     return LayoutBuilder(builder: (context, box) {
       final side = ((box.maxWidth - settings.maxWidth) / 2)
           .clamp(settings.margin, 4000.0);
       return Stack(children: [
-        GestureDetector(
+        Listener(
           behavior: HitTestBehavior.translucent,
-          onTapUp: (d) => _onTap(d, box.maxWidth),
+          onPointerDown: (e) {
+            _downPos = e.position;
+            _downTime = e.timeStamp;
+          },
+          onPointerMove: (e) {
+            if (_downPos != null && (e.position - _downPos!).distance > 14) {
+              _downPos = null;
+            }
+          },
+          onPointerUp: (e) => _pointerUp(e, box.maxWidth),
+          onPointerCancel: (_) => _downPos = null,
           child: ScrollablePositionedList.builder(
             itemScrollController: _items,
             itemPositionsListener: _positions,
             initialScrollIndex: initial,
             itemCount: c.blocks.length,
             padding: EdgeInsets.fromLTRB(side, top + 24, side, 140),
-            itemBuilder: (_, i) => buildBlock(c.blocks[i], style),
+            itemBuilder: (_, i) => buildBlock(
+              c.blocks[i],
+              style,
+              BlockCtx(
+                marks: marksByBlock[i] ?? const [],
+                onSelect: (part, s, e, t, note) =>
+                    _onSelect(c, i, part, s, e, t, note),
+              ),
+            ),
           ),
         ),
         // borde izquierdo: gesto vertical = brillo
@@ -408,7 +516,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                     tooltip: 'Buscar',
                     icon: const Icon(Icons.search),
                     color: palette.text,
-                    onPressed: () => _openMenu(c, tab: 2),
+                    onPressed: () => _openMenu(c, tab: 3),
                   ),
                   IconButton(
                     tooltip: 'Capítulos',

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../data/bookmarks.dart';
+import '../../data/highlights.dart';
+import 'highlight_sheet.dart';
 import 'book_search.dart';
 import 'reader_content.dart';
 
@@ -10,6 +12,7 @@ import 'reader_content.dart';
 Future<int?> showReaderMenu(
   BuildContext context, {
   required String bookId,
+  required String title,
   required BookContent content,
   required int currentIndex,
   int initialTab = 0,
@@ -20,18 +23,19 @@ Future<int?> showReaderMenu(
       showDragHandle: true,
       constraints: const BoxConstraints(maxWidth: 640),
       builder: (_) => DefaultTabController(
-        length: 3,
+        length: 4,
         initialIndex: initialTab,
         child: SizedBox(
           height: MediaQuery.sizeOf(context).height * .8,
-          child: _Menu(bookId: bookId, content: content, current: currentIndex),
+          child: _Menu(bookId: bookId, title: title, content: content, current: currentIndex),
         ),
       ),
     );
 
 class _Menu extends ConsumerStatefulWidget {
-  const _Menu({required this.bookId, required this.content, required this.current});
+  const _Menu({required this.bookId, required this.title, required this.content, required this.current});
   final String bookId;
+  final String title;
   final BookContent content;
   final int current;
 
@@ -73,10 +77,18 @@ class _MenuState extends ConsumerState<_Menu> {
         .toList()
       ..sort((a, b) => a.index.compareTo(b.index));
 
+    final notes = ref
+        .watch(highlightsProvider)
+        .where((h) => h.bookId == widget.bookId)
+        .toList()
+      ..sort((a, b) =>
+          a.block != b.block ? a.block.compareTo(b.block) : a.start.compareTo(b.start));
+
     return Column(children: [
       const TabBar(tabs: [
         Tab(text: 'Capítulos'),
         Tab(text: 'Marcadores'),
+        Tab(text: 'Notas'),
         Tab(text: 'Buscar'),
       ]),
       Expanded(
@@ -128,6 +140,61 @@ class _MenuState extends ConsumerState<_Menu> {
                     );
                   },
                 ),
+          // Notas y subrayados
+          notes.isEmpty
+              ? Center(
+                  child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Text(
+                      'Aún no hay subrayados.\nMantén pulsado un texto, selecciónalo y elige «Subrayar» o «Nota».',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium),
+                ))
+              : Column(children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.copy_all, size: 18),
+                      label: const Text('Copiar todo'),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(
+                            text: exportHighlights(widget.title, notes)));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('Notas copiadas como Markdown'),
+                            duration: Duration(milliseconds: 1400)));
+                      },
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: notes.length,
+                      itemBuilder: (_, i) {
+                        final h = notes[i];
+                        return ListTile(
+                          leading: Container(
+                              width: 6, height: 40, color: h.color.color),
+                          title: Text(h.text,
+                              maxLines: 3, overflow: TextOverflow.ellipsis),
+                          subtitle: Text(
+                              [
+                                if (h.note != null && h.note!.trim().isNotEmpty)
+                                  h.note!.trim(),
+                                h.chapter,
+                              ].join('\n'),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis),
+                          isThreeLine: h.note != null && h.note!.trim().isNotEmpty,
+                          trailing: IconButton(
+                            tooltip: 'Editar',
+                            icon: const Icon(Icons.edit_outlined),
+                            onPressed: () => showHighlightSheet(context, h.id),
+                          ),
+                          onTap: () => _go(h.block),
+                        );
+                      },
+                    ),
+                  ),
+                ]),
           // Búsqueda
           Column(children: [
             Padding(
