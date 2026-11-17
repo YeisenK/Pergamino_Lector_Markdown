@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pergamino/data/settings.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pergamino/domain/book.dart';
 import 'package:pergamino/main.dart';
 
@@ -13,7 +15,11 @@ void main() {
   });
 
   testWidgets('La app arranca', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: PergaminoApp()));
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    await tester.pumpWidget(ProviderScope(
+        overrides: [prefsProvider.overrideWithValue(prefs)],
+        child: const PergaminoApp()));
     expect(find.byType(PergaminoApp), findsOneWidget);
   });
 }

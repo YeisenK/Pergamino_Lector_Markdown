@@ -1,17 +1,32 @@
-# pergamino
+# Pergamino
 
-A new Flutter project.
+Lector de libros en Markdown para Android, hecho con Flutter. Pensado para leer sin distracciones.
 
-## Getting Started
+## Características
+- Biblioteca local: importa archivos `.md` (uno por libro), portadas tipográficas, progreso y búsqueda.
+- Lector de scroll continuo con modo inmersivo y pantalla siempre encendida.
+- Toque en el centro: muestra u oculta controles (y la barra de progreso). Gesto vertical en el borde izquierdo: brillo.
+- Capítulos por `#`/`##`, índice, búsqueda dentro del libro (sin distinguir acentos) y marcadores.
+- Tipografía ajustable en vivo: tamaño, interlineado, márgenes, ancho, fuente (Literata, Source Serif, Inter, Atkinson) y justificado.
+- Temas: Papel, Blanco, Sepia, Gris, Negro OLED y automático.
+- «Abrir con» desde el gestor de archivos para `.md`.
 
-This project is a starting point for a Flutter application.
+## Desarrollo
+```
+flutter pub get
+flutter test
+flutter run --release
+```
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Firmar una versión de distribución
+```
+keytool -genkey -v -keystore android/pergamino.jks -keyalg RSA -keysize 2048 -validity 10000 -alias pergamino
+```
+Crea `android/key.properties` (ignorado por git):
+```
+storeFile=pergamino.jks
+storePassword=...
+keyAlias=pergamino
+keyPassword=...
+```
+Y compila con `flutter build appbundle` o `flutter build apk --release`.

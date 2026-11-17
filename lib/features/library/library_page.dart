@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../data/book_repository.dart';
+import '../../data/bookmarks.dart';
+import '../reader/typography_sheet.dart';
 import '../../domain/book.dart';
 
 class LibraryPage extends ConsumerStatefulWidget {
@@ -37,7 +39,10 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         ],
       ),
     );
-    if (ok == true) ref.read(booksProvider.notifier).remove(b);
+    if (ok == true) {
+      ref.read(bookmarksProvider.notifier).removeBook(b.id);
+      ref.read(booksProvider.notifier).remove(b);
+    }
   }
 
   @override
@@ -51,9 +56,22 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(24, 28, 24, 8),
-              child: Text('Biblioteca',
-                  style: GoogleFonts.literata(
-                      fontSize: 34, fontWeight: FontWeight.w600)),
+              child: Row(children: [
+                Expanded(
+                  child: Text('Biblioteca',
+                      style: GoogleFonts.literata(
+                          fontSize: 34, fontWeight: FontWeight.w600)),
+                ),
+                IconButton(
+                  tooltip: 'Tema',
+                  icon: const Icon(Icons.palette_outlined),
+                  onPressed: () => showModalBottomSheet(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (_) => const TypographySheet(paletteOnly: true),
+                  ),
+                ),
+              ]),
             ),
           ),
           SliverToBoxAdapter(

@@ -8,6 +8,7 @@ class ReaderStyle {
   final Color muted;
   final Color accent;
   final TextStyle Function(TextStyle) font;
+  final bool justify;
   const ReaderStyle({
     required this.fontSize,
     required this.lineHeight,
@@ -15,6 +16,7 @@ class ReaderStyle {
     required this.muted,
     required this.accent,
     required this.font,
+    this.justify = false,
   });
 
   TextStyle get body =>
@@ -100,7 +102,7 @@ Widget _para(List<md.Node>? kids, ReaderStyle s, TextStyle style) => Padding(
       padding: EdgeInsets.only(bottom: s.fontSize * .85),
       child: Text.rich(
         TextSpan(children: _inline(kids, s, style)),
-        textAlign: TextAlign.justify,
+        textAlign: s.justify ? TextAlign.justify : TextAlign.start,
       ),
     );
 

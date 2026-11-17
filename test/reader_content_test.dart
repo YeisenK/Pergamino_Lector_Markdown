@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:pergamino/features/reader/md_renderer.dart';
-import 'package:pergamino/features/reader/reader_page.dart';
+import 'package:pergamino/features/reader/reader_content.dart';
 
 const sample = '''# Libro
 

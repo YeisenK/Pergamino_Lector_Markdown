@@ -35,7 +35,7 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
     return importFile(File(src));
   }
 
-  Future<Book> importFile(File file) async {
+  Future<Book> importFile(File file, {String? name}) async {
     final dir = Directory(
         p.join((await getApplicationDocumentsDirectory()).path, 'books'));
     await dir.create(recursive: true);
@@ -44,7 +44,7 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
     final text = await dest.readAsString();
     final book = Book(
       id: id,
-      title: _extractTitle(text, p.basenameWithoutExtension(file.path)),
+      title: _extractTitle(text, p.basenameWithoutExtension(name ?? file.path)),
       path: dest.path,
       addedAt: DateTime.now(),
     );

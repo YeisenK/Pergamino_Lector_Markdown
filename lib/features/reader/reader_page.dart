@@ -1,51 +1,23 @@
 import 'dart:async';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:markdown/markdown.dart' as md;
 import 'package:material_ui/material_ui.dart';
+import 'package:screen_brightness/screen_brightness.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../app/theme.dart';
 import '../../data/book_repository.dart';
+import '../../data/bookmarks.dart';
+import '../../data/settings.dart';
 import '../../domain/book.dart';
-import 'chapter_parser.dart';
+import 'book_search.dart';
 import 'md_renderer.dart';
-
-class BookContent {
-  final List<md.Node> blocks;
-  final List<int> chapterStarts; // índice de bloque donde empieza cada capítulo
-  final List<String> chapterTitles;
-  const BookContent(this.blocks, this.chapterStarts, this.chapterTitles);
-}
-
-/// Lee el archivo y parsea en un Isolate para no bloquear la UI.
-Future<BookContent> loadBook(String path) async {
-  final text = await File(path).readAsString();
-  return compute(parseBookText, text);
-}
-
-BookContent parseBookText(String text) {
-  final chapters = parseChapters(text);
-  final blocks = <md.Node>[];
-  final starts = <int>[];
-  final titles = <String>[];
-  final doc = md.Document(extensionSet: md.ExtensionSet.gitHubFlavored);
-  for (final c in chapters) {
-    starts.add(blocks.length);
-    titles.add(c.title);
-    blocks.addAll(doc.parseLines(c.markdown.split('\n')));
-  }
-  return BookContent(blocks, starts, titles);
-}
-
-final bookContentProvider =
-    FutureProvider.family<BookContent, String>((ref, path) => loadBook(path));
+import 'reader_content.dart';
+import 'reader_menu_sheet.dart';
+import 'typography_sheet.dart';
 
 class ReaderPage extends ConsumerStatefulWidget {
   const ReaderPage({super.key, required this.bookId});
@@ -60,9 +32,17 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   final _positions = ItemPositionsListener.create();
   bool _controls = false;
   double _progress = 0;
+  int _first = 0;
+  int _last = 0;
+  int _total = 1;
   Timer? _debounce;
   bool _restored = false;
   late final BooksNotifier _notifier;
+
+  // brillo
+  double? _brightness;
+  bool _showBrightness = false;
+  Timer? _brightnessHide;
 
   @override
   void initState() {
@@ -77,26 +57,33 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   void dispose() {
     _positions.itemPositions.removeListener(_onScroll);
     _debounce?.cancel();
+    _brightnessHide?.cancel();
     _persist();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
+    ScreenBrightness().resetApplicationScreenBrightness().catchError((_) {});
     super.dispose();
   }
 
-  int _total = 1;
-
   void _onScroll() {
     if (!_restored) return;
-    final pos = _positions.itemPositions.value;
+    final pos = _positions.itemPositions.value
+        .where((p) => p.itemTrailingEdge > 0 && p.itemLeadingEdge < 1);
     if (pos.isEmpty) return;
-    final first = pos
-        .where((p) => p.itemTrailingEdge > 0)
-        .reduce((a, b) => a.itemLeadingEdge < b.itemLeadingEdge ? a : b);
-    final frac = (first.index - first.itemLeadingEdge /
-            (first.itemTrailingEdge - first.itemLeadingEdge).clamp(.0001, 100)) /
+    final first = pos.reduce((a, b) => a.itemLeadingEdge < b.itemLeadingEdge ? a : b);
+    final last = pos.reduce((a, b) => a.index > b.index ? a : b);
+    final size = (first.itemTrailingEdge - first.itemLeadingEdge).clamp(.0001, 100);
+    final frac = (first.index + (-first.itemLeadingEdge / size).clamp(0, 1)) /
         (_total <= 1 ? 1 : _total - 1);
     final p = frac.clamp(0.0, 1.0);
-    if ((p - _progress).abs() > .0005) setState(() => _progress = p);
+    final moved = (p - _progress).abs() > .0005;
+    if (moved || first.index != _first || last.index != _last) {
+      setState(() {
+        _progress = p;
+        _first = first.index;
+        _last = last.index;
+      });
+    }
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 700), _persist);
   }
@@ -106,10 +93,73 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   void _onTap(TapUpDetails d, double width) {
     final x = d.localPosition.dx / width;
     if (x > .3 && x < .7) {
+      HapticFeedback.selectionClick();
       setState(() => _controls = !_controls);
     } else if (_controls) {
       setState(() => _controls = false);
     }
+  }
+
+  Future<void> _dragBrightness(DragUpdateDetails d, double height) async {
+    _brightness ??= await ScreenBrightness().application.catchError((_) => .5);
+    final next = (_brightness! - d.delta.dy / (height * .6)).clamp(0.02, 1.0);
+    _brightness = next;
+    ScreenBrightness().setApplicationScreenBrightness(next).catchError((_) {});
+    _brightnessHide?.cancel();
+    _brightnessHide = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _showBrightness = false);
+    });
+    if (mounted) setState(() => _showBrightness = true);
+  }
+
+  Future<void> _openMenu(BookContent c, {int tab = 0}) async {
+    final idx = await showReaderMenu(context,
+        bookId: widget.bookId, content: c, currentIndex: _first, initialTab: tab);
+    if (idx != null && mounted) {
+      setState(() => _controls = false);
+      _items.scrollTo(
+          index: idx,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic);
+    }
+  }
+
+  bool _hasBookmarkVisible(List<Bookmark> marks) => marks.any(
+      (b) => b.bookId == widget.bookId && b.index >= _first && b.index <= _last);
+
+  void _toggleBookmark(BookContent c) {
+    final n = ref.read(bookmarksProvider.notifier);
+    final marks = ref.read(bookmarksProvider);
+    final here = marks.where(
+        (b) => b.bookId == widget.bookId && b.index >= _first && b.index <= _last);
+    HapticFeedback.mediumImpact();
+    if (here.isNotEmpty) {
+      for (final b in here.toList()) {
+        n.remove(b);
+      }
+      return;
+    }
+    var ch = 0;
+    for (var i = 0; i < c.chapterStarts.length; i++) {
+      if (c.chapterStarts[i] <= _first) ch = i;
+    }
+    // el primer bloque con texto a partir del primero visible
+    var idx = _first;
+    while (idx < c.blocks.length - 1 && blockSnippet(c.blocks[idx]).isEmpty) {
+      idx++;
+    }
+    n.add(Bookmark(
+      bookId: widget.bookId,
+      index: idx,
+      snippet: blockSnippet(c.blocks[idx]),
+      chapter: c.chapterTitles[ch],
+      createdAt: DateTime.now(),
+    ));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+          content: Text('Marcador guardado'),
+          duration: Duration(milliseconds: 1200)));
   }
 
   @override
@@ -119,31 +169,29 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     if (book == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    final settings = ref.watch(settingsProvider);
+    final palette = settings.resolve(MediaQuery.platformBrightnessOf(context));
     final content = ref.watch(bookContentProvider(book.path));
-    final palette = Theme.of(context).brightness == Brightness.dark
-        ? ReaderPalette.oled
-        : ReaderPalette.paper;
-    final style = ReaderStyle(
-      fontSize: 19,
-      lineHeight: 1.6,
-      text: palette.text,
-      muted: palette.muted,
-      accent: palette.accent,
-      font: (t) => GoogleFonts.literata(textStyle: t),
-    );
 
     return Scaffold(
       backgroundColor: palette.background,
       body: content.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('No se pudo abrir: $e')),
-        data: (c) => _buildReader(context, book, c, style, palette),
+        loading: () => Center(
+            child: CircularProgressIndicator(color: palette.accent)),
+        error: (e, _) => Center(
+            child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text('No se pudo abrir el libro.\n$e',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: palette.text)),
+        )),
+        data: (c) => _buildReader(context, book, c, settings, palette),
       ),
     );
   }
 
   Widget _buildReader(BuildContext context, Book book, BookContent c,
-      ReaderStyle style, ReaderPalette palette) {
+      ReaderSettings settings, ReaderPalette palette) {
     _total = c.blocks.length;
     final initial = book.progress <= 0
         ? 0
@@ -153,13 +201,27 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         if (mounted) {
           _restored = true;
           _progress = book.progress;
+          _first = initial;
+          _last = initial;
         }
       });
     }
+    final style = ReaderStyle(
+      fontSize: settings.fontSize,
+      lineHeight: settings.lineHeight,
+      text: palette.text,
+      muted: palette.muted,
+      accent: palette.accent,
+      justify: settings.justify,
+      font: settings.font.apply,
+    );
     final top = MediaQuery.paddingOf(context).top;
+    final marks = ref.watch(bookmarksProvider);
+    final marked = _hasBookmarkVisible(marks);
 
     return LayoutBuilder(builder: (context, box) {
-      final side = box.maxWidth > 720 ? (box.maxWidth - 680) / 2 : 24.0;
+      final side = ((box.maxWidth - settings.maxWidth) / 2)
+          .clamp(settings.margin, 4000.0);
       return Stack(children: [
         GestureDetector(
           behavior: HitTestBehavior.translucent,
@@ -169,36 +231,102 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
             itemPositionsListener: _positions,
             initialScrollIndex: initial,
             itemCount: c.blocks.length,
-            padding: EdgeInsets.fromLTRB(side, top + 24, side, 120),
+            padding: EdgeInsets.fromLTRB(side, top + 24, side, 140),
             itemBuilder: (_, i) => buildBlock(c.blocks[i], style),
           ),
         ),
+        // borde izquierdo: gesto vertical = brillo
+        Positioned(
+          left: 0,
+          top: top + 80,
+          bottom: 80,
+          width: 28,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onVerticalDragUpdate: (d) => _dragBrightness(d, box.maxHeight),
+          ),
+        ),
+        // progreso fino: solo visible junto con los controles
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
-          child: LinearProgressIndicator(
-            value: _progress,
-            minHeight: 2,
-            color: palette.accent.withValues(alpha: .8),
-            backgroundColor: Colors.transparent,
+          child: IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: _controls ? 1 : 0,
+              duration: const Duration(milliseconds: 220),
+              child: LinearProgressIndicator(
+                value: _progress,
+                minHeight: 3,
+                color: palette.accent,
+                backgroundColor: palette.text.withValues(alpha: .08),
+              ),
+            ),
           ),
         ),
+        // indicador de brillo
+        Positioned(
+          left: 16,
+          top: 0,
+          bottom: 0,
+          child: IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: _showBrightness ? 1 : 0,
+              duration: const Duration(milliseconds: 150),
+              child: Center(
+                child: Container(
+                  width: 44,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    color: palette.text.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          child: FractionallySizedBox(
+                            heightFactor: (_brightness ?? .5).clamp(.05, 1),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: palette.accent,
+                                borderRadius: BorderRadius.circular(22),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Icon(Icons.brightness_6,
+                            size: 20, color: palette.text),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        // barra superior
         AnimatedPositioned(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          top: _controls ? 0 : -(top + 72),
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          top: _controls ? 0 : -(top + 80),
           left: 0,
           right: 0,
           child: Material(
-            color: palette.background.withValues(alpha: .96),
-            elevation: 2,
+            color: palette.background.withValues(alpha: .97),
+            elevation: 3,
             child: Padding(
-              padding: EdgeInsets.only(top: top, left: 4, right: 12),
+              padding: EdgeInsets.only(top: top, left: 4, right: 4),
               child: SizedBox(
                 height: 56,
                 child: Row(children: [
                   IconButton(
+                    tooltip: 'Volver',
                     icon: const Icon(Icons.arrow_back),
                     color: palette.text,
                     onPressed: () => context.pop(),
@@ -207,13 +335,37 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                     child: Text(book.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.literata(
+                        style: settings.font.apply(TextStyle(
                             color: palette.text,
                             fontSize: 16,
-                            fontWeight: FontWeight.w600)),
+                            fontWeight: FontWeight.w600))),
                   ),
                   Text('${(_progress * 100).round()} %',
-                      style: TextStyle(color: palette.muted)),
+                      style: TextStyle(color: palette.muted, fontSize: 13)),
+                  IconButton(
+                    tooltip: marked ? 'Quitar marcador' : 'Añadir marcador',
+                    icon: Icon(marked ? Icons.bookmark : Icons.bookmark_border),
+                    color: marked ? palette.accent : palette.text,
+                    onPressed: () => _toggleBookmark(c),
+                  ),
+                  IconButton(
+                    tooltip: 'Buscar',
+                    icon: const Icon(Icons.search),
+                    color: palette.text,
+                    onPressed: () => _openMenu(c, tab: 2),
+                  ),
+                  IconButton(
+                    tooltip: 'Capítulos',
+                    icon: const Icon(Icons.format_list_bulleted),
+                    color: palette.text,
+                    onPressed: () => _openMenu(c),
+                  ),
+                  IconButton(
+                    tooltip: 'Tipografía y tema',
+                    icon: const Icon(Icons.text_fields),
+                    color: palette.text,
+                    onPressed: () => showTypographySheet(context),
+                  ),
                 ]),
               ),
             ),
