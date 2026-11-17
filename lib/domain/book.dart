@@ -17,9 +17,9 @@ class Book {
     this.progress = 0,
   });
 
-  Book copyWith({DateTime? lastOpened, double? progress}) => Book(
+  Book copyWith({String? title, DateTime? lastOpened, double? progress}) => Book(
         id: id,
-        title: title,
+        title: title ?? this.title,
         path: path,
         addedAt: addedAt,
         lastOpened: lastOpened ?? this.lastOpened,

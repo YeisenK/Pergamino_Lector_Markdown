@@ -66,7 +66,7 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
     }
     final book = Book(
       id: id,
-      title: _extractTitle(text, p.basenameWithoutExtension(name ?? file.path)),
+      title: titleFor(text, p.basenameWithoutExtension(name ?? file.path)),
       path: dest.path,
       addedAt: DateTime.now(),
     );
@@ -101,9 +101,28 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
     ]);
   }
 
-  static String _extractTitle(String text, String fallback) {
-    final m = RegExp(r'^\s*#\s+(.+?)\s*#*\s*$', multiLine: true).firstMatch(text);
-    final t = m?.group(1)?.replaceAll(RegExp(r'[*_`]'), '').trim();
-    return (t == null || t.isEmpty) ? fallback : t;
+  /// Título del libro: la primera línea «# …» del texto, salvo que el nombre del
+  /// archivo la contenga y sea más completo (p. ej. «Capítulo 1 — El círculo.md»
+  /// con «# El círculo» dentro). Sin encabezado se usa el nombre del archivo.
+  static String titleFor(String text, String fileBase) {
+    final m = RegExp(r'^[ \t]*#[ \t]+(.+?)[ \t]*#*[ \t]*$', multiLine: true)
+        .firstMatch(text);
+    final heading = m?.group(1)?.replaceAll(RegExp(r'[*_`]'), '').trim();
+    final file = fileBase.trim();
+    if (heading == null || heading.isEmpty) return file;
+    if (file.length > heading.length &&
+        file.toLowerCase().contains(heading.toLowerCase())) {
+      return file;
+    }
+    return heading;
+  }
+
+  Future<void> rename(String id, String title) async {
+    final t = title.trim();
+    if (t.isEmpty) return;
+    await _save([
+      for (final b in state.value ?? [])
+        if (b.id == id) b.copyWith(title: t) else b
+    ]);
   }
 }
