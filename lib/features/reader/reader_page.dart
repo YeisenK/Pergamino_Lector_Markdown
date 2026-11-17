@@ -18,6 +18,7 @@ import '../../tts/read_aloud.dart';
 import 'book_search.dart';
 import 'highlight_sheet.dart';
 import 'md_renderer.dart';
+import 'reader_clock.dart';
 import 'reader_content.dart';
 import 'reader_menu_sheet.dart';
 import 'typography_sheet.dart';
@@ -425,7 +426,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
             itemPositionsListener: _positions,
             initialScrollIndex: initial,
             itemCount: c.blocks.length,
-            padding: EdgeInsets.fromLTRB(side, top + 24, side, 140),
+            padding: EdgeInsets.fromLTRB(side, top + (settings.showClock ? 40 : 24), side, 140),
             itemBuilder: (_, i) => buildBlock(
               c.blocks[i],
               style,
@@ -437,6 +438,22 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
             ),
           ),
         ),
+        // franja superior con el reloj (tapa el texto que pasa por debajo)
+        if (settings.showClock)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: Container(
+                height: top + 30,
+                color: palette.background,
+                alignment: Alignment.bottomCenter,
+                padding: const EdgeInsets.only(bottom: 6),
+                child: ReaderClock(color: palette.muted),
+              ),
+            ),
+          ),
         // borde izquierdo: gesto vertical = brillo
         Positioned(
           left: 0,

@@ -32,6 +32,7 @@ class ReaderSettings {
   final double maxWidth;
   final ReaderFont font;
   final bool justify;
+  final bool showClock;
   final ReaderPalette? palette; // null = automático (sistema)
 
   const ReaderSettings({
@@ -41,6 +42,7 @@ class ReaderSettings {
     this.maxWidth = 680,
     this.font = ReaderFont.literata,
     this.justify = false,
+    this.showClock = false,
     this.palette,
   });
 
@@ -51,6 +53,7 @@ class ReaderSettings {
     double? maxWidth,
     ReaderFont? font,
     bool? justify,
+    bool? showClock,
     ReaderPalette? palette,
     bool autoPalette = false,
   }) =>
@@ -61,6 +64,7 @@ class ReaderSettings {
         maxWidth: maxWidth ?? this.maxWidth,
         font: font ?? this.font,
         justify: justify ?? this.justify,
+        showClock: showClock ?? this.showClock,
         palette: autoPalette ? null : (palette ?? this.palette),
       );
 
@@ -76,6 +80,7 @@ class ReaderSettings {
         'maxWidth': maxWidth,
         'font': font.name,
         'justify': justify,
+        'showClock': showClock,
         'palette': palette?.name,
       };
 
@@ -90,6 +95,7 @@ class ReaderSettings {
       maxWidth: n('maxWidth', d.maxWidth, 420, 960),
       font: ReaderFont.values.asNameMap()[j['font']] ?? d.font,
       justify: j['justify'] as bool? ?? d.justify,
+      showClock: j['showClock'] as bool? ?? d.showClock,
       palette: ReaderPalette.values.asNameMap()[j['palette']],
     );
   }

@@ -101,6 +101,13 @@ class TypographySheet extends ConsumerWidget {
               value: s.justify,
               onChanged: (v) => n.update(s.copyWith(justify: v)),
             ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Mostrar reloj'),
+              subtitle: const Text('Una franja discreta arriba mientras lees'),
+              value: s.showClock,
+              onChanged: (v) => n.update(s.copyWith(showClock: v)),
+            ),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
