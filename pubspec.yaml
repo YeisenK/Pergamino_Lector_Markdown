@@ -46,6 +46,10 @@ dependencies:
   path: ^1.9.1
   scrollable_positioned_list: ^0.3.8
   screen_brightness: ^2.1.11
+  flutter_tts: ^4.2.5
+  audioplayers: ^6.8.1
+  sherpa_onnx: 1.13.8
+  archive: ^4.7.1
 
 dev_dependencies:
   flutter_test:

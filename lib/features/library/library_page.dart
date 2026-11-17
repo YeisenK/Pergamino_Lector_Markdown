@@ -65,6 +65,11 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                           fontSize: 34, fontWeight: FontWeight.w600)),
                 ),
                 IconButton(
+                  tooltip: 'Voces',
+                  icon: const Icon(Icons.record_voice_over_outlined),
+                  onPressed: () => context.push('/voices'),
+                ),
+                IconButton(
                   tooltip: 'Tema',
                   icon: const Icon(Icons.palette_outlined),
                   onPressed: () => showModalBottomSheet(

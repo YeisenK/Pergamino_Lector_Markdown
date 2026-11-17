@@ -14,6 +14,7 @@ import '../../data/bookmarks.dart';
 import '../../data/highlights.dart';
 import '../../data/settings.dart';
 import '../../domain/book.dart';
+import '../../tts/read_aloud.dart';
 import 'book_search.dart';
 import 'highlight_sheet.dart';
 import 'md_renderer.dart';
@@ -40,6 +41,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   Timer? _debounce;
   bool _restored = false;
   late final BooksNotifier _notifier;
+  late final ReadAloud _read;
 
   // scroll rápido (barra de progreso arrastrable)
   bool _scrubbing = false;
@@ -56,6 +58,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   void initState() {
     super.initState();
     _notifier = ref.read(booksProvider.notifier);
+    _read = ref.read(readAloudProvider.notifier);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     WakelockPlus.enable();
     _positions.itemPositions.addListener(_onScroll);
@@ -67,6 +70,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     _debounce?.cancel();
     _brightnessHide?.cancel();
     _scrubHide?.cancel();
+    _read.stop();
     _persist();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
@@ -279,6 +283,23 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   @override
   Widget build(BuildContext context) {
+    // sigue la frase que se lee: si su bloque no está a la vista, se desplaza
+    ref.listen<ReadState>(readAloudProvider, (prev, next) {
+      final seg = next.segment;
+      if (seg == null || !next.playing || prev?.segment?.block == seg.block) return;
+      final pos = _positions.itemPositions.value
+          .where((p) => p.index == seg.block)
+          .firstOrNull;
+      final visible = pos != null && pos.itemLeadingEdge >= 0 && pos.itemTrailingEdge <= 1;
+      if (!visible && _items.isAttached) {
+        _items.scrollTo(
+            index: seg.block,
+            alignment: .12,
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeInOutCubic);
+      }
+    });
+    ref.listen<String?>(ttsVoiceProvider, (_, _) => _read.voiceChanged());
     final books = ref.watch(booksProvider).value ?? [];
     final book = books.where((b) => b.id == widget.bookId).firstOrNull;
     if (book == null) {
@@ -347,6 +368,18 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
           _hlTapped = true;
           showHighlightSheet(context, h.id);
         },
+      ));
+    }
+
+    final reading = ref.watch(readAloudProvider);
+    final seg = reading.segment;
+    if (reading.active && seg != null) {
+      (marksByBlock[seg.block] ??= []).add(Mark(
+        key: 'tts',
+        part: seg.part,
+        start: seg.start,
+        end: seg.end,
+        color: palette.accent.withValues(alpha: .32),
       ));
     }
 
@@ -474,6 +507,24 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
             ),
           ),
         ),
+        // reproductor de lectura en voz alta
+        if (reading.active)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 60 + MediaQuery.paddingOf(context).bottom,
+            child: _Player(
+              state: reading,
+              palette: palette,
+              rate: ref.watch(ttsRateProvider),
+              onToggle: _read.toggle,
+              onNext: _read.next,
+              onPrev: _read.previous,
+              onRate: _read.setRate,
+              onVoices: () => context.push('/voices'),
+              onClose: _read.stop,
+            ),
+          ),
         // barra superior
         AnimatedPositioned(
           duration: const Duration(milliseconds: 220),
@@ -504,8 +555,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                             fontSize: 16,
                             fontWeight: FontWeight.w600))),
                   ),
-                  Text('${(_progress * 100).round()} %',
-                      style: TextStyle(color: palette.muted, fontSize: 13)),
                   IconButton(
                     tooltip: marked ? 'Quitar marcador' : 'Añadir marcador',
                     icon: Icon(marked ? Icons.bookmark : Icons.bookmark_border),
@@ -523,6 +572,19 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                     icon: const Icon(Icons.format_list_bulleted),
                     color: palette.text,
                     onPressed: () => _openMenu(c),
+                  ),
+                  IconButton(
+                    tooltip: 'Leer en voz alta',
+                    icon: Icon(reading.active ? Icons.headphones : Icons.headphones_outlined),
+                    color: reading.active ? palette.accent : palette.text,
+                    onPressed: () {
+                      if (reading.active) {
+                        _read.toggle();
+                      } else {
+                        _read.start(c, style, fromBlock: _first);
+                        setState(() => _controls = false);
+                      }
+                    },
                   ),
                   IconButton(
                     tooltip: 'Tipografía y tema',
@@ -643,6 +705,96 @@ class _ScrubBar extends StatelessWidget {
             ),
           ),
       ]),
+    );
+  }
+}
+
+class _Player extends StatelessWidget {
+  const _Player({
+    required this.state,
+    required this.palette,
+    required this.rate,
+    required this.onToggle,
+    required this.onNext,
+    required this.onPrev,
+    required this.onRate,
+    required this.onVoices,
+    required this.onClose,
+  });
+  final ReadState state;
+  final ReaderPalette palette;
+  final double rate;
+  final VoidCallback onToggle, onNext, onPrev, onVoices, onClose;
+  final ValueChanged<double> onRate;
+
+  static const _rates = [0.8, 1.0, 1.2, 1.5, 1.8];
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = palette.text;
+    final next = _rates.firstWhere((r) => r > rate + .01, orElse: () => _rates.first);
+    return Material(
+      color: palette.isDark
+          ? Color.alphaBlend(palette.text.withValues(alpha: .12), palette.background)
+          : Color.alphaBlend(palette.text.withValues(alpha: .06), palette.background),
+      elevation: 6,
+      borderRadius: BorderRadius.circular(28),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (state.error != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+              child: Text(state.error!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+            ),
+          Row(children: [
+            IconButton(
+                tooltip: 'Frase anterior',
+                icon: const Icon(Icons.skip_previous),
+                color: fg,
+                onPressed: onPrev),
+            state.loading
+                ? const SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Padding(
+                        padding: EdgeInsets.all(13),
+                        child: CircularProgressIndicator(strokeWidth: 3)))
+                : IconButton.filled(
+                    tooltip: state.playing ? 'Pausar' : 'Reanudar',
+                    icon: Icon(state.playing ? Icons.pause : Icons.play_arrow),
+                    style: IconButton.styleFrom(
+                        backgroundColor: palette.accent,
+                        foregroundColor: palette.isDark ? Colors.black : Colors.white),
+                    onPressed: onToggle),
+            IconButton(
+                tooltip: 'Frase siguiente',
+                icon: const Icon(Icons.skip_next),
+                color: fg,
+                onPressed: onNext),
+            const Spacer(),
+            TextButton(
+              onPressed: () => onRate(next),
+              style: TextButton.styleFrom(foregroundColor: fg, minimumSize: const Size(56, 40)),
+              child: Text('${rate.toStringAsFixed(rate * 10 % 10 == 0 ? 0 : 1)}×',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            IconButton(
+                tooltip: 'Voces',
+                icon: const Icon(Icons.record_voice_over_outlined),
+                color: fg,
+                onPressed: onVoices),
+            IconButton(
+                tooltip: 'Cerrar lectura',
+                icon: const Icon(Icons.close),
+                color: fg,
+                onPressed: onClose),
+          ]),
+        ]),
+      ),
     );
   }
 }

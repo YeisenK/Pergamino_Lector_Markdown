@@ -20,6 +20,13 @@ android {
         resValues = true
     }
 
+    packaging {
+        // Solo teléfonos ARM de 64 bits: las librerías de Piper pesan mucho por arquitectura
+        jniLibs {
+            excludes += listOf("**/x86/**", "**/x86_64/**", "**/armeabi-v7a/**", "**/armeabi/**")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
