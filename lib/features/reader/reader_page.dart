@@ -193,13 +193,35 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     if (mounted) setState(() => _showBrightness = true);
   }
 
-  void _scrubStart(DragStartDetails d, double width, BookContent c) {
-    _scrubHide?.cancel();
+  int _chapterIndexOf(BookContent c, int block) {
+    var ch = 0;
+    for (var i = 0; i < c.chapterStarts.length; i++) {
+      if (c.chapterStarts[i] <= block) ch = i;
+    }
+    return ch;
+  }
+
+  /// Abre la barra grande (se cierra sola a los 3 s sin tocarla).
+  void _scrubOpen(BookContent c) {
     HapticFeedback.selectionClick();
     setState(() {
       _scrubbing = true;
-      _scrubChapter = -1;
+      _scrubFrac = _progress;
+      _scrubChapter = _chapterIndexOf(c, _first);
     });
+    _armScrubClose();
+  }
+
+  void _armScrubClose() {
+    _scrubHide?.cancel();
+    _scrubHide = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _scrubbing = false);
+    });
+  }
+
+  void _scrubStart(DragStartDetails d, double width, BookContent c) {
+    _scrubHide?.cancel();
+    HapticFeedback.selectionClick();
     _scrubTo(d.localPosition.dx, width, c);
   }
 
@@ -207,10 +229,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     const pad = 24.0;
     final f = ((dx - pad) / (width - pad * 2)).clamp(0.0, 1.0);
     final idx = (f * (c.blocks.length - 1)).round();
-    var ch = 0;
-    for (var i = 0; i < c.chapterStarts.length; i++) {
-      if (c.chapterStarts[i] <= idx) ch = i;
-    }
+    final ch = _chapterIndexOf(c, idx);
     if (ch != _scrubChapter && _scrubChapter != -1) HapticFeedback.selectionClick();
     _items.jumpTo(index: idx);
     setState(() {
@@ -221,10 +240,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   void _scrubEnd() {
     _persist();
-    _scrubHide?.cancel();
-    _scrubHide = Timer(const Duration(milliseconds: 700), () {
-      if (mounted) setState(() => _scrubbing = false);
-    });
+    _armScrubClose();
   }
 
   Future<void> _openMenu(BookContent c, {int tab = 0}) async {
@@ -372,6 +388,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     }
 
     final reading = ref.watch(readAloudProvider);
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    // la barra grande y el icono quedan por encima de la zona de gestos del sistema
+    final scrubBase = (reading.active ? 124.0 : 64.0) + bottomInset;
+    final scrubIconBottom = (reading.active ? 128.0 : 72.0) + bottomInset;
     final seg = reading.segment;
     if (reading.active && seg != null) {
       (marksByBlock[seg.block] ??= []).add(Mark(
@@ -428,12 +448,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
             onVerticalDragUpdate: (d) => _dragBrightness(d, box.maxHeight),
           ),
         ),
-        // barra de progreso: visible con los controles; un gesto en la zona
-        // inferior la agranda y funciona como scroll rápido
-        Positioned(
+        // barra de progreso: fina con los controles; con el icono de la derecha
+        // se abre grande (lejos del borde, donde Android usa sus gestos) y
+        // sirve como scroll rápido
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
           left: 0,
           right: 0,
-          bottom: 0,
+          bottom: _scrubbing ? scrubBase : 0,
           child: IgnorePointer(
             child: AnimatedOpacity(
               opacity: (_controls || _scrubbing) ? 1 : 0,
@@ -448,17 +471,59 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
             ),
           ),
         ),
+        if (_scrubbing)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: scrubBase + 8,
+            height: 56,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTapDown: (d) {
+                _scrubHide?.cancel();
+                _scrubTo(d.localPosition.dx, box.maxWidth, c);
+                _scrubEnd();
+              },
+              onHorizontalDragStart: (d) => _scrubStart(d, box.maxWidth, c),
+              onHorizontalDragUpdate: (d) =>
+                  _scrubTo(d.localPosition.dx, box.maxWidth, c),
+              onHorizontalDragEnd: (_) => _scrubEnd(),
+              onHorizontalDragCancel: _scrubEnd,
+            ),
+          ),
+        // icono pequeño y semitransparente para abrir la barra
         Positioned(
-          left: 0,
-          right: 0,
-          bottom: 8,
-          height: 44,
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onPanStart: (d) => _scrubStart(d, box.maxWidth, c),
-            onPanUpdate: (d) => _scrubTo(d.localPosition.dx, box.maxWidth, c),
-            onPanEnd: (_) => _scrubEnd(),
-            onPanCancel: _scrubEnd,
+          right: 8,
+          bottom: scrubIconBottom,
+          child: IgnorePointer(
+            ignoring: _scrubbing,
+            child: AnimatedOpacity(
+              opacity: _scrubbing ? 0 : (_controls ? .8 : .3),
+              duration: const Duration(milliseconds: 200),
+              child: Semantics(
+                button: true,
+                label: 'Barra de progreso y desplazamiento rápido',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _scrubOpen(c),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    alignment: Alignment.center,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: palette.text.withValues(alpha: .12),
+                      ),
+                      child: Icon(Icons.linear_scale,
+                          size: 20, color: palette.text),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
         // indicador de brillo
