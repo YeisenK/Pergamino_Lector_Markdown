@@ -28,7 +28,9 @@ enum Feature {
   paginated('Modo paginado',
       'Leer por páginas en lugar de desplazarse de forma continua.', false),
   editor('Editor de libros',
-      'Corrige o escribe el texto de tus libros dentro de la app.', false);
+      'Corrige o escribe el texto de tus libros dentro de la app.', false),
+  dictionary('Diccionario',
+      'Definiciones de palabras sin conexión. Se descarga una vez.', true);
 
   const Feature(this.label, this.hint, this.defaultOn);
   final String label;

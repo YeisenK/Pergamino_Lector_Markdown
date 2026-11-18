@@ -2,6 +2,8 @@ import 'package:flutter/gestures.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:material_ui/material_ui.dart';
 
+import '../dictionary/dictionary_sheet.dart';
+
 class ReaderStyle {
   final double fontSize;
   final double lineHeight;
@@ -166,6 +168,16 @@ Widget _rich(List<InlineSpan> spans, BlockCtx c, {TextAlign? align}) {
       final v = state.textEditingValue;
       final sel = v.selection;
       final items = <ContextMenuButtonItem>[];
+      final picked = sel.isValid ? sel.textInside(v.text).trim() : '';
+      if (sel.isValid && RegExp(r"^[\p{L}'\-]{2,40}$", unicode: true).hasMatch(picked)) {
+        items.add(ContextMenuButtonItem(
+          label: 'Definición',
+          onPressed: () {
+            state.hideToolbar();
+            showDefinition(context, picked);
+          },
+        ));
+      }
       if (sel.isValid && c.onRead != null) {
         items.add(ContextMenuButtonItem(
           label: 'Leer desde aquí',

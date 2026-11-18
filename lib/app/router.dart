@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../features/library/library_page.dart';
 import '../features/reader/reader_page.dart';
 import '../features/settings/backup_page.dart';
+import '../features/dictionary/dictionary_page.dart';
 import '../features/editor/editor_page.dart';
 import '../features/library/library_search_page.dart';
 import '../features/gestures/gestures_page.dart';
@@ -25,6 +26,7 @@ final router = GoRouter(
   GoRoute(path: '/backup', builder: (_, _) => const BackupPage()),
   GoRoute(path: '/features', builder: (_, _) => const FeaturesPage()),
   GoRoute(path: '/voices', builder: (_, _) => const VoicesPage()),
+  GoRoute(path: '/diccionario', builder: (_, _) => const DictionaryPage()),
   GoRoute(path: '/buscar', builder: (_, _) => const LibrarySearchPage()),
   GoRoute(
     path: '/read/:id',

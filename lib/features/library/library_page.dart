@@ -311,6 +311,11 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                                   value: '/buscar',
                                   child: Text('Buscar en todos los libros'),
                                 ),
+                                if (ref.watch(featuresProvider).contains(Feature.dictionary))
+                                  const PopupMenuItem(
+                                    value: '/diccionario',
+                                    child: Text('Diccionario'),
+                                  ),
                                 const PopupMenuItem(
                                   value: '/features',
                                   child: Text('Funciones'),
