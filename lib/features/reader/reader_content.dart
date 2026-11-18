@@ -19,6 +19,13 @@ Future<BookContent> loadBook(String path) async {
   return compute(parseBookText, text);
 }
 
+/// Las definiciones de notas al pie (`[^1]: texto`) las descarta el parser de
+/// Markdown. Se convierten en párrafos `[^1] texto`, que sí se ven en el libro.
+String footnotesAsParagraphs(String md) => md.replaceAllMapped(
+      RegExp(r'^\[\^([^\]]+)\]:[ \t]*(.*)$', multiLine: true),
+      (m) => '[^${m[1]}] ${m[2]}',
+    );
+
 BookContent parseBookText(String text) {
   final chapters = parseChapters(text);
   final blocks = <md.Node>[];
@@ -28,7 +35,7 @@ BookContent parseBookText(String text) {
   for (final c in chapters) {
     starts.add(blocks.length);
     titles.add(c.title);
-    blocks.addAll(doc.parseLines(c.markdown.split('\n')));
+    blocks.addAll(doc.parseLines(footnotesAsParagraphs(c.markdown).split('\n')));
   }
   return BookContent(blocks, starts, titles);
 }

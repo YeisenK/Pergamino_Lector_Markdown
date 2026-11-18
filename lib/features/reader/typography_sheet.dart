@@ -116,6 +116,15 @@ class TypographySheet extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
             ],
+            slider('Espacio', s.paraGap, .3, 2.0, s.paraGap.toStringAsFixed(2),
+                (v) => n.update(s.copyWith(paraGap: (v * 20).round() / 20))),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Modo noche automático'),
+              subtitle: const Text('Tema oscuro de 20:00 a 7:00'),
+              value: s.autoNight,
+              onChanged: (v) => n.update(s.copyWith(autoNight: v)),
+            ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Mostrar reloj'),

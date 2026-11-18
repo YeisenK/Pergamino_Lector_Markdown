@@ -526,6 +526,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
       muted: palette.muted,
       accent: palette.accent,
       justify: settings.justify,
+      paraGap: settings.paraGap,
       font: settings.font.apply,
     );
     _cachedStyle = style;

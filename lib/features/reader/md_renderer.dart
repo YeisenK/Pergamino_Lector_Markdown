@@ -10,6 +10,7 @@ class ReaderStyle {
   final Color accent;
   final TextStyle Function(TextStyle) font;
   final bool justify;
+  final double paraGap; // espacio bajo cada párrafo, en múltiplos de la letra
   const ReaderStyle({
     required this.fontSize,
     required this.lineHeight,
@@ -18,6 +19,7 @@ class ReaderStyle {
     required this.accent,
     required this.font,
     this.justify = false,
+    this.paraGap = .85,
   });
 
   TextStyle get body =>
@@ -143,7 +145,7 @@ Widget buildBlock(md.Node node, ReaderStyle s, [BlockCtx? ctx]) {
 
 Widget _para(List<md.Node>? kids, ReaderStyle s, TextStyle style, BlockCtx c) =>
     Padding(
-      padding: EdgeInsets.only(bottom: s.fontSize * .85),
+      padding: EdgeInsets.only(bottom: s.fontSize * s.paraGap),
       child: _rich(_inline(kids, s, style), c,
           align: s.justify ? TextAlign.justify : TextAlign.start),
     );
@@ -328,7 +330,7 @@ Widget _table(md.Element el, ReaderStyle s) {
     if (sec is md.Element) collect(sec, sec.tag == 'thead');
   }
   return Padding(
-    padding: EdgeInsets.only(bottom: s.fontSize * .85),
+    padding: EdgeInsets.only(bottom: s.fontSize * s.paraGap),
     child: SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Table(
@@ -397,7 +399,7 @@ TextBlockInfo? textBlockInfo(md.Node node, ReaderStyle s) {
       _inline(node.children, s, s.body),
       s.body,
       0,
-      s.fontSize * .85,
+      s.fontSize * s.paraGap,
       s.justify ? TextAlign.justify : TextAlign.start,
     );
   }

@@ -93,6 +93,14 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
     await _save((state.value ?? []).where((x) => x.id != b.id).toList());
   }
 
+  /// Marca un libro como terminado (100 %) o lo vuelve a no terminado (0 %).
+  Future<void> setFinished(String id, bool finished) async {
+    await _save([
+      for (final b in state.value ?? [])
+        if (b.id == id) b.copyWith(progress: finished ? 1 : 0) else b
+    ]);
+  }
+
   Future<void> updateProgress(String id, double progress) async {
     await _save([
       for (final b in state.value ?? [])

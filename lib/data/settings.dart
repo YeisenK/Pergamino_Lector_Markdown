@@ -25,6 +25,9 @@ enum ReaderFont {
       };
 }
 
+/// Noche: de las 20:00 a las 7:00.
+bool isNightHour(DateTime t) => t.hour >= 20 || t.hour < 7;
+
 class ReaderSettings {
   final double fontSize;
   final double lineHeight;
@@ -34,6 +37,8 @@ class ReaderSettings {
   final bool justify;
   final bool showClock;
   final bool paged; // modo paginado (requiere la función activa)
+  final bool autoNight; // tema oscuro entre las 20:00 y las 7:00
+  final double paraGap; // espacio entre párrafos, multiplicador de la letra
   final bool clockBattery;
   final bool clockProgress;
   final bool clockChapter;
@@ -51,6 +56,8 @@ class ReaderSettings {
     this.justify = false,
     this.showClock = false,
     this.paged = false,
+    this.autoNight = false,
+    this.paraGap = .85,
     this.clockBattery = true,
     this.clockProgress = false,
     this.clockChapter = false,
@@ -69,6 +76,8 @@ class ReaderSettings {
     bool? justify,
     bool? showClock,
     bool? paged,
+    bool? autoNight,
+    double? paraGap,
     bool? clockBattery,
     bool? clockProgress,
     bool? clockChapter,
@@ -87,6 +96,8 @@ class ReaderSettings {
         justify: justify ?? this.justify,
         showClock: showClock ?? this.showClock,
         paged: paged ?? this.paged,
+        autoNight: autoNight ?? this.autoNight,
+        paraGap: paraGap ?? this.paraGap,
         clockBattery: clockBattery ?? this.clockBattery,
         clockProgress: clockProgress ?? this.clockProgress,
         clockChapter: clockChapter ?? this.clockChapter,
@@ -97,9 +108,11 @@ class ReaderSettings {
       );
 
   /// Paleta efectiva según el brillo del sistema cuando está en automático.
-  ReaderPalette resolve(Brightness system) =>
-      palette ??
-      (system == Brightness.dark ? ReaderPalette.oled : ReaderPalette.paper);
+  ReaderPalette resolve(Brightness system, {DateTime? now}) {
+    if (autoNight && isNightHour(now ?? DateTime.now())) return ReaderPalette.oled;
+    return palette ??
+        (system == Brightness.dark ? ReaderPalette.oled : ReaderPalette.paper);
+  }
 
   Map<String, dynamic> toJson() => {
         'fontSize': fontSize,
@@ -110,6 +123,8 @@ class ReaderSettings {
         'justify': justify,
         'showClock': showClock,
         'paged': paged,
+        'autoNight': autoNight,
+        'paraGap': paraGap,
         'clockBattery': clockBattery,
         'clockProgress': clockProgress,
         'clockChapter': clockChapter,
@@ -132,6 +147,8 @@ class ReaderSettings {
       justify: j['justify'] as bool? ?? d.justify,
       showClock: j['showClock'] as bool? ?? d.showClock,
       paged: j['paged'] as bool? ?? d.paged,
+      autoNight: j['autoNight'] as bool? ?? d.autoNight,
+      paraGap: n('paraGap', d.paraGap, .3, 2.0),
       clockBattery: j['clockBattery'] as bool? ?? d.clockBattery,
       clockProgress: j['clockProgress'] as bool? ?? d.clockProgress,
       clockChapter: j['clockChapter'] as bool? ?? d.clockChapter,
