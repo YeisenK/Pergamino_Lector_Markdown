@@ -167,6 +167,11 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                                   value: '/features',
                                   child: Text('Funciones'),
                                 ),
+                                if (ref.watch(featuresProvider).contains(Feature.gestures))
+                                  const PopupMenuItem(
+                                    value: '/gestures',
+                                    child: Text('Gestos'),
+                                  ),
                                 if (ref.watch(featuresProvider).contains(Feature.backup))
                                   const PopupMenuItem(
                                     value: '/backup',

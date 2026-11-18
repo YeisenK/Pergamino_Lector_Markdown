@@ -12,6 +12,7 @@ import '../../app/theme.dart';
 import '../../data/book_repository.dart';
 import '../../data/bookmarks.dart';
 import '../../data/features.dart';
+import '../../data/gestures.dart';
 import '../../data/highlights.dart';
 import '../../data/reading_speed.dart';
 import '../../data/stats_repository.dart';
@@ -52,6 +53,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
   late final StatsNotifier _stats;
   ReadingTracker? _tracker;
   int _totalWords = 0;
+  BookContent? _cached;
+  ReaderStyle? _cachedStyle;
 
   // scroll rápido (barra de progreso arrastrable)
   bool _scrubbing = false;
@@ -172,7 +175,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
     }
     _lastTapTime = e.timeStamp;
     _lastTapPos = e.position;
-    final x = e.position.dx / width;
+    final zone = zoneAt(e.position.dx, width);
+    final gesturesOn = ref.read(featuresProvider).contains(Feature.gestures);
+    final action = gesturesOn
+        ? ref.read(gesturesProvider)[zone]!
+        : defaultZones[zone]!;
     // deja que un toque sobre un subrayado lo atienda primero
     Timer(Duration.zero, () {
       if (!mounted) return;
@@ -181,7 +188,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
         _lastToggled = false;
         return;
       }
-      if (x > .3 && x < .7) {
+      if (action == GestureAction.toggleControls) {
         HapticFeedback.selectionClick();
         setState(() => _controls = !_controls);
         _lastToggled = true;
@@ -190,8 +197,45 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
         _lastToggled = true;
       } else {
         _lastToggled = false;
+        _runAction(action);
       }
     });
+  }
+
+  /// Ejecuta una acción de gesto.
+  void _runAction(GestureAction a) {
+    switch (a) {
+      case GestureAction.none:
+      case GestureAction.toggleControls:
+        break;
+      case GestureAction.scrollUp:
+      case GestureAction.scrollDown:
+        final page = (_last - _first).clamp(3, 40);
+        final target = a == GestureAction.scrollUp
+            ? (_first - page).clamp(0, _total - 1)
+            : (_first + page).clamp(0, _total - 1);
+        if (_items.isAttached) {
+          _items.scrollTo(
+              index: target,
+              duration: const Duration(milliseconds: 380),
+              curve: Curves.easeOutCubic);
+        }
+      case GestureAction.voicePlayPause:
+        final reading = ref.read(readAloudProvider);
+        if (reading.active) {
+          _read.toggle();
+        } else if (_cached != null) {
+          _read.start(_cached!, _cachedStyle!,
+              fromBlock: _first,
+              tables: false,
+              code: false,
+              footnotes: true);
+        }
+      case GestureAction.pagePrev:
+      case GestureAction.pageNext:
+        // se activa con el modo paginado (fase siguiente)
+        break;
+    }
   }
 
   String _chapterOf(BookContent c, int block) {
@@ -390,6 +434,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
   Widget _buildReader(BuildContext context, Book book, BookContent c,
       ReaderSettings settings, ReaderPalette palette) {
     _total = c.blocks.length;
+    _cached = c;
     _totalWords = wordCount(c);
     if (_tracker == null && ref.read(featuresProvider).contains(Feature.stats)) {
       _tracker = ReadingTracker(
@@ -420,6 +465,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
       justify: settings.justify,
       font: settings.font.apply,
     );
+    _cachedStyle = style;
     final top = MediaQuery.paddingOf(context).top;
     final marks = ref.watch(bookmarksProvider);
     final marked = _hasBookmarkVisible(marks);
