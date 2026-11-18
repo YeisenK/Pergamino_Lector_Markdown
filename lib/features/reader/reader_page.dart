@@ -14,6 +14,8 @@ import '../../data/bookmarks.dart';
 import '../../data/features.dart';
 import '../../data/highlights.dart';
 import '../../data/reading_speed.dart';
+import '../../data/stats_repository.dart';
+import '../../domain/reading_stats.dart';
 import '../../domain/library_view.dart';
 import '../../data/settings.dart';
 import '../../domain/book.dart';
@@ -35,7 +37,7 @@ class ReaderPage extends ConsumerStatefulWidget {
   ConsumerState<ReaderPage> createState() => _ReaderPageState();
 }
 
-class _ReaderPageState extends ConsumerState<ReaderPage> {
+class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObserver {
   final _items = ItemScrollController();
   final _positions = ItemPositionsListener.create();
   bool _controls = false;
@@ -47,6 +49,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   bool _restored = false;
   late final BooksNotifier _notifier;
   late final ReadAloud _read;
+  late final StatsNotifier _stats;
+  ReadingTracker? _tracker;
+  int _totalWords = 0;
 
   // scroll rápido (barra de progreso arrastrable)
   bool _scrubbing = false;
@@ -64,6 +69,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
     super.initState();
     _notifier = ref.read(booksProvider.notifier);
     _read = ref.read(readAloudProvider.notifier);
+    _stats = ref.read(statsProvider.notifier);
+    WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     WakelockPlus.enable();
     _positions.itemPositions.addListener(_onScroll);
@@ -71,6 +78,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _endSession();
     _positions.itemPositions.removeListener(_onScroll);
     _debounce?.cancel();
     _brightnessHide?.cancel();
@@ -85,6 +94,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   void _onScroll() {
     if (!_restored) return;
+    _activity();
     final pos = _positions.itemPositions.value
         .where((p) => p.itemTrailingEdge > 0 && p.itemLeadingEdge < 1);
     if (pos.isEmpty) return;
@@ -108,6 +118,32 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   void _persist() => _notifier.updateProgress(widget.bookId, _progress);
 
+  // ---- estadísticas de lectura ----
+
+  int get _wordsNow => (_progress * _totalWords).round();
+
+  /// Cualquier actividad (toque, desplazamiento, voz) mantiene viva la sesión.
+  void _activity() => _tracker?.activity(DateTime.now(), wordsNow: _wordsNow);
+
+  void _endSession() {
+    final t = _tracker;
+    if (t == null) return;
+    final session = t.finish(
+        id: DateTime.now().microsecondsSinceEpoch.toString(), wordsNow: _wordsNow);
+    if (session != null) _stats.add(session);
+    _tracker = null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final now = DateTime.now();
+    if (state == AppLifecycleState.resumed) {
+      _tracker?.resume(now);
+    } else {
+      _tracker?.pause(now);
+    }
+  }
+
   // Detección de toques propia: el texto seleccionable consume los toques,
   // así que se observan los eventos de puntero directamente.
   Offset? _downPos;
@@ -118,6 +154,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   bool _hlTapped = false;
 
   void _pointerUp(PointerUpEvent e, double width) {
+    _activity();
     final down = _downPos;
     _downPos = null;
     if (down == null) return;
@@ -321,6 +358,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       }
     });
     ref.listen<String?>(ttsVoiceProvider, (_, _) => _read.voiceChanged());
+    ref.listen<ReadState>(readAloudProvider, (prev, next) {
+      if (next.playing) _activity();
+    });
     final books = ref.watch(booksProvider).value ?? [];
     final book = books.where((b) => b.id == widget.bookId).firstOrNull;
     if (book == null) {
@@ -350,6 +390,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
   Widget _buildReader(BuildContext context, Book book, BookContent c,
       ReaderSettings settings, ReaderPalette palette) {
     _total = c.blocks.length;
+    _totalWords = wordCount(c);
+    if (_tracker == null && ref.read(featuresProvider).contains(Feature.stats)) {
+      _tracker = ReadingTracker(
+        bookId: widget.bookId,
+        now: DateTime.now(),
+        startWords: (book.progress * _totalWords).round(),
+      );
+    }
     final initial = book.progress <= 0
         ? 0
         : (book.progress * (_total - 1)).floor().clamp(0, _total - 1);

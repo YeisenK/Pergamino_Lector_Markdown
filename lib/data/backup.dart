@@ -21,6 +21,7 @@ const backupKeys = [
   'tts_voice_v1',
   'tts_rate_v1',
   'reading_wpm_v1',
+  'stats_v1',
 ];
 
 class BackupException implements Exception {
@@ -125,7 +126,7 @@ Future<RestoreResult> restoreBackup(
 
   // marcadores y subrayados: unión por clave
   var marks = 0;
-  for (final key in ['bookmarks_v1', 'highlights_v1']) {
+  for (final key in ['bookmarks_v1', 'highlights_v1', 'stats_v1']) {
     final incomingRaw = values[key] == null ? null : (values[key] as Map)['value'] as String;
     if (incomingRaw == null) continue;
     final existing = prefs.getString(key);
@@ -144,7 +145,7 @@ Future<RestoreResult> restoreBackup(
 
   // ajustes y funciones: se reemplazan con los de la copia
   for (final k in backupKeys) {
-    if (k == 'books_v1' || k == 'bookmarks_v1' || k == 'highlights_v1') continue;
+    if (k == 'books_v1' || k == 'bookmarks_v1' || k == 'highlights_v1' || k == 'stats_v1') continue;
     final entry = values[k] as Map<String, dynamic>?;
     if (entry == null) continue;
     final v = entry['value'];
@@ -162,7 +163,8 @@ Future<RestoreResult> restoreBackup(
   return RestoreResult(added, skipped, marks);
 }
 
-String _markKey(Map<String, dynamic> m) =>
-    m.containsKey('block')
-        ? 'h:${m['id']}'
-        : 'b:${m['bookId']}:${m['index']}';
+String _markKey(Map<String, dynamic> m) {
+  if (m.containsKey('activeSeconds')) return 'st:${m['id']}';
+  if (m.containsKey('block')) return 'h:${m['id']}';
+  return 'b:${m['bookId']}:${m['index']}';
+}
