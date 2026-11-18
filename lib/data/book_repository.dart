@@ -120,7 +120,7 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
   }
 
   /// Pone una portada (la imagen se reduce y se guarda en la app). Null si no es imagen.
-  Future<bool> setCover(String id, Uint8List imageBytes) async {
+  Future<bool> setCover(String id, Uint8List imageBytes, {bool showTitle = true}) async {
     final jpg = encodeCover(imageBytes);
     if (jpg == null) return false;
     final dir = Directory(p.join((await getApplicationDocumentsDirectory()).path, 'covers'));
@@ -129,9 +129,16 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
     await file.writeAsBytes(jpg);
     await _save([
       for (final b in state.value ?? [])
-        if (b.id == id) b.copyWith(coverPath: file.path) else b
+        if (b.id == id) b.copyWith(coverPath: file.path, coverTitle: showTitle) else b
     ]);
     return true;
+  }
+
+  Future<void> setCoverTitle(String id, bool show) async {
+    await _save([
+      for (final b in state.value ?? [])
+        if (b.id == id) b.copyWith(coverTitle: show) else b
+    ]);
   }
 
   Future<void> removeCover(String id) async {

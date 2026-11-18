@@ -128,9 +128,28 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     final res = await FilePicker.pickFiles(type: FileType.image);
     final path = res.isEmpty ? null : res.first.path;
     if (path == null) return;
+    if (!mounted) return;
+    final showTitle = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Portada'),
+        content: const Text('¿Quieres que el nombre del libro se vea encima de la portada?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Quitar nombre'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Conservar nombre'),
+          ),
+        ],
+      ),
+    );
+    if (showTitle == null) return;
     final ok = await ref
         .read(booksProvider.notifier)
-        .setCover(b.id, await File(path).readAsBytes());
+        .setCover(b.id, await File(path).readAsBytes(), showTitle: showTitle);
     if (!mounted) return;
     if (ok) setState(_selected.clear);
     ScaffoldMessenger.of(context)
@@ -156,27 +175,40 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
             style: GoogleFonts.literata(fontSize: 22, fontWeight: FontWeight.w600),
           ),
         ),
-        if (one != null) ...[
-          IconButton(
-            tooltip: 'Renombrar',
-            icon: const Icon(Icons.edit_outlined),
-            onPressed: () => _rename(one),
+        if (one != null)
+          PopupMenuButton<String>(
+            tooltip: 'Más',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) async {
+              switch (v) {
+                case 'rename':
+                  await _rename(one);
+                case 'cover':
+                  await _pickCover(one);
+                case 'title':
+                  await ref
+                      .read(booksProvider.notifier)
+                      .setCoverTitle(one.id, !one.coverTitle);
+                  if (mounted) setState(_selected.clear);
+                case 'nocover':
+                  await ref.read(booksProvider.notifier).removeCover(one.id);
+                  if (mounted) setState(_selected.clear);
+              }
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'rename', child: Text('Renombrar')),
+              const PopupMenuItem(value: 'cover', child: Text('Cambiar portada')),
+              if (one.coverPath != null)
+                PopupMenuItem(
+                  value: 'title',
+                  child: Text(one.coverTitle
+                      ? 'Quitar nombre de la portada'
+                      : 'Mostrar nombre sobre la portada'),
+                ),
+              if (one.coverPath != null)
+                const PopupMenuItem(value: 'nocover', child: Text('Quitar portada')),
+            ],
           ),
-          IconButton(
-            tooltip: 'Cambiar portada',
-            icon: const Icon(Icons.image_outlined),
-            onPressed: () => _pickCover(one),
-          ),
-          if (one.coverPath != null)
-            IconButton(
-              tooltip: 'Quitar portada',
-              icon: const Icon(Icons.hide_image_outlined),
-              onPressed: () async {
-                await ref.read(booksProvider.notifier).removeCover(one.id);
-                if (mounted) setState(_selected.clear);
-              },
-            ),
-        ],
         IconButton(
           tooltip: 'Seleccionar todos',
           icon: const Icon(Icons.select_all),
@@ -459,6 +491,7 @@ class _BookCard extends StatelessWidget {
                         size: 24,
                       ),
                     ),
+                  if (book.coverPath == null || book.coverTitle)
                   Align(
                     alignment: Alignment.bottomLeft,
                     child: Builder(builder: (context) {
