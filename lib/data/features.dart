@@ -26,7 +26,9 @@ enum Feature {
   gestures('Gestos configurables',
       'Elige qué hace cada zona de la pantalla al tocarla.', false),
   paginated('Modo paginado',
-      'Leer por páginas en lugar de desplazarse de forma continua.', false);
+      'Leer por páginas en lugar de desplazarse de forma continua.', false),
+  editor('Editor de libros',
+      'Corrige o escribe el texto de tus libros dentro de la app.', false);
 
   const Feature(this.label, this.hint, this.defaultOn);
   final String label;

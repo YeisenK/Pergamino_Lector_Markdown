@@ -185,6 +185,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                   await _rename(one);
                 case 'cover':
                   await _pickCover(one);
+                case 'edit':
+                  if (mounted) context.push('/edit/${one.id}');
                 case 'title':
                   await ref
                       .read(booksProvider.notifier)
@@ -198,6 +200,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'rename', child: Text('Renombrar')),
               const PopupMenuItem(value: 'cover', child: Text('Cambiar portada')),
+              if (ref.watch(featuresProvider).contains(Feature.editor))
+                const PopupMenuItem(value: 'edit', child: Text('Editar texto')),
               if (one.coverPath != null)
                 PopupMenuItem(
                   value: 'title',

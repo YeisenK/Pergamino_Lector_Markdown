@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../features/library/library_page.dart';
 import '../features/reader/reader_page.dart';
 import '../features/settings/backup_page.dart';
+import '../features/editor/editor_page.dart';
 import '../features/gestures/gestures_page.dart';
 import '../features/stats/stats_page.dart';
 import '../features/settings/features_page.dart';
@@ -14,6 +15,10 @@ final router = GoRouter(
         (state.uri.scheme.isNotEmpty || state.uri.path.startsWith('/sdcard')) ? '/' : null,
     routes: [
   GoRoute(path: '/', builder: (_, _) => const LibraryPage()),
+  GoRoute(
+    path: '/edit/:id',
+    builder: (_, s) => EditorPage(bookId: s.pathParameters['id']!),
+  ),
   GoRoute(path: '/gestures', builder: (_, _) => const GesturesPage()),
   GoRoute(path: '/stats', builder: (_, _) => const StatsPage()),
   GoRoute(path: '/backup', builder: (_, _) => const BackupPage()),
