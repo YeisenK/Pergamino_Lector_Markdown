@@ -11,6 +11,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../app/theme.dart';
 import '../../data/book_repository.dart';
 import '../../data/bookmarks.dart';
+import '../../data/features.dart';
 import '../../data/highlights.dart';
 import '../../data/settings.dart';
 import '../../domain/book.dart';
@@ -390,6 +391,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
     final reading = ref.watch(readAloudProvider);
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final clockExtras = ref.watch(featuresProvider).contains(Feature.clockExtras);
     // la barra grande y el icono quedan por encima de la zona de gestos del sistema
     final scrubBase = (reading.active ? 124.0 : 64.0) + bottomInset;
     final scrubIconBottom = (reading.active ? 128.0 : 72.0) + bottomInset;
@@ -450,7 +452,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                 color: palette.background,
                 alignment: Alignment.bottomCenter,
                 padding: const EdgeInsets.only(bottom: 6),
-                child: ReaderClock(color: palette.muted),
+                child: ReaderClock(
+                  color: palette.muted,
+                  progress: _progress,
+                  chapter: c.chapterTitles[_chapterIndexOf(c, _first)],
+                  showBattery: clockExtras && settings.clockBattery,
+                  showProgress: clockExtras && settings.clockProgress,
+                  showChapter: clockExtras && settings.clockChapter,
+                ),
               ),
             ),
           ),

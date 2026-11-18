@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../app/theme.dart';
+import '../../data/features.dart';
 import '../../data/settings.dart';
 
 Future<void> showTypographySheet(BuildContext context) => showModalBottomSheet(
@@ -108,6 +109,27 @@ class TypographySheet extends ConsumerWidget {
               value: s.showClock,
               onChanged: (v) => n.update(s.copyWith(showClock: v)),
             ),
+            if (s.showClock && ref.watch(featuresProvider).contains(Feature.clockExtras))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Wrap(spacing: 8, runSpacing: 8, children: [
+                  FilterChip(
+                    label: const Text('Batería'),
+                    selected: s.clockBattery,
+                    onSelected: (v) => n.update(s.copyWith(clockBattery: v)),
+                  ),
+                  FilterChip(
+                    label: const Text('Progreso'),
+                    selected: s.clockProgress,
+                    onSelected: (v) => n.update(s.copyWith(clockProgress: v)),
+                  ),
+                  FilterChip(
+                    label: const Text('Capítulo'),
+                    selected: s.clockChapter,
+                    onSelected: (v) => n.update(s.copyWith(clockChapter: v)),
+                  ),
+                ]),
+              ),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(

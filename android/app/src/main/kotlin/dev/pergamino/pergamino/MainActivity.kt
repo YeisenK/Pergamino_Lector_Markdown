@@ -1,6 +1,8 @@
 package dev.pergamino.pergamino
 
+import android.content.Context
 import android.content.Intent
+import android.os.BatteryManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import io.flutter.embedding.android.FlutterActivity
@@ -15,6 +17,13 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pergamino/incoming")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pergamino/battery")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "level") {
+                    val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                    result.success(bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
+                } else result.notImplemented()
+            }
         channel!!.setMethodCallHandler { call, result ->
             if (call.method == "initial") {
                 result.success(pending ?: extract(intent))

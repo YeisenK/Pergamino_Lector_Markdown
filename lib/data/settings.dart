@@ -33,6 +33,12 @@ class ReaderSettings {
   final ReaderFont font;
   final bool justify;
   final bool showClock;
+  final bool clockBattery;
+  final bool clockProgress;
+  final bool clockChapter;
+  final bool voiceTables;
+  final bool voiceCode;
+  final bool voiceFootnotes;
   final ReaderPalette? palette; // null = automático (sistema)
 
   const ReaderSettings({
@@ -43,6 +49,12 @@ class ReaderSettings {
     this.font = ReaderFont.literata,
     this.justify = false,
     this.showClock = false,
+    this.clockBattery = true,
+    this.clockProgress = false,
+    this.clockChapter = false,
+    this.voiceTables = false,
+    this.voiceCode = false,
+    this.voiceFootnotes = true,
     this.palette,
   });
 
@@ -54,6 +66,12 @@ class ReaderSettings {
     ReaderFont? font,
     bool? justify,
     bool? showClock,
+    bool? clockBattery,
+    bool? clockProgress,
+    bool? clockChapter,
+    bool? voiceTables,
+    bool? voiceCode,
+    bool? voiceFootnotes,
     ReaderPalette? palette,
     bool autoPalette = false,
   }) =>
@@ -65,6 +83,12 @@ class ReaderSettings {
         font: font ?? this.font,
         justify: justify ?? this.justify,
         showClock: showClock ?? this.showClock,
+        clockBattery: clockBattery ?? this.clockBattery,
+        clockProgress: clockProgress ?? this.clockProgress,
+        clockChapter: clockChapter ?? this.clockChapter,
+        voiceTables: voiceTables ?? this.voiceTables,
+        voiceCode: voiceCode ?? this.voiceCode,
+        voiceFootnotes: voiceFootnotes ?? this.voiceFootnotes,
         palette: autoPalette ? null : (palette ?? this.palette),
       );
 
@@ -81,6 +105,12 @@ class ReaderSettings {
         'font': font.name,
         'justify': justify,
         'showClock': showClock,
+        'clockBattery': clockBattery,
+        'clockProgress': clockProgress,
+        'clockChapter': clockChapter,
+        'voiceTables': voiceTables,
+        'voiceCode': voiceCode,
+        'voiceFootnotes': voiceFootnotes,
         'palette': palette?.name,
       };
 
@@ -96,6 +126,12 @@ class ReaderSettings {
       font: ReaderFont.values.asNameMap()[j['font']] ?? d.font,
       justify: j['justify'] as bool? ?? d.justify,
       showClock: j['showClock'] as bool? ?? d.showClock,
+      clockBattery: j['clockBattery'] as bool? ?? d.clockBattery,
+      clockProgress: j['clockProgress'] as bool? ?? d.clockProgress,
+      clockChapter: j['clockChapter'] as bool? ?? d.clockChapter,
+      voiceTables: j['voiceTables'] as bool? ?? d.voiceTables,
+      voiceCode: j['voiceCode'] as bool? ?? d.voiceCode,
+      voiceFootnotes: j['voiceFootnotes'] as bool? ?? d.voiceFootnotes,
       palette: ReaderPalette.values.asNameMap()[j['palette']],
     );
   }

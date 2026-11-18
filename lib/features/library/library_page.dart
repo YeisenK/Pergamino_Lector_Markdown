@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../data/book_repository.dart';
+import '../../data/features.dart';
+import '../../data/library_prefs.dart';
+import '../../domain/library_view.dart';
 import '../../data/bookmarks.dart';
 import '../../data/highlights.dart';
 import '../reader/typography_sheet.dart';
@@ -19,6 +22,7 @@ class LibraryPage extends ConsumerStatefulWidget {
 
 class _LibraryPageState extends ConsumerState<LibraryPage> {
   String _query = '';
+
 
   final Set<String> _selected = {};
   bool get _selecting => _selected.isNotEmpty;
@@ -148,6 +152,28 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                                 ),
                               ),
                             ),
+                            if (ref.watch(featuresProvider).contains(Feature.stats))
+                              IconButton(
+                                tooltip: 'Estadísticas',
+                                icon: const Icon(Icons.bar_chart_rounded),
+                                onPressed: () => context.push('/stats'),
+                              ),
+                            PopupMenuButton<String>(
+                              tooltip: 'Más',
+                              icon: const Icon(Icons.more_vert),
+                              onSelected: (v) => context.push(v),
+                              itemBuilder: (_) => [
+                                const PopupMenuItem(
+                                  value: '/features',
+                                  child: Text('Funciones'),
+                                ),
+                                if (ref.watch(featuresProvider).contains(Feature.backup))
+                                  const PopupMenuItem(
+                                    value: '/backup',
+                                    child: Text('Copia de seguridad'),
+                                  ),
+                              ],
+                            ),
                             IconButton(
                               tooltip: 'Voces',
                               icon: const Icon(
@@ -173,7 +199,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
                   child: TextField(
-                    onChanged: (v) => setState(() => _query = v.toLowerCase()),
+                    onChanged: (v) => setState(() => _query = v),
                     decoration: InputDecoration(
                       hintText: 'Buscar',
                       prefixIcon: const Icon(Icons.search),
@@ -187,6 +213,13 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                   ),
                 ),
               ),
+              if (ref.watch(featuresProvider).contains(Feature.libraryFilters))
+                SliverToBoxAdapter(
+                  child: _ViewBar(
+                    view: ref.watch(libraryViewProvider),
+                    onChanged: (v) => ref.read(libraryViewProvider.notifier).update(v),
+                  ),
+                ),
               books.when(
                 loading: () => const SliverFillRemaining(
                   child: Center(child: CircularProgressIndicator()),
@@ -194,15 +227,14 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                 error: (e, _) =>
                     SliverFillRemaining(child: Center(child: Text('$e'))),
                 data: (list) {
-                  final shown =
-                      list
-                          .where((b) => b.title.toLowerCase().contains(_query))
-                          .toList()
-                        ..sort(
-                          (a, b) => (b.lastOpened ?? b.addedAt).compareTo(
-                            a.lastOpened ?? a.addedAt,
-                          ),
-                        );
+                  final view = ref.watch(libraryViewProvider);
+                  final filtersOn = ref.watch(featuresProvider).contains(Feature.libraryFilters);
+                  final shown = applyLibraryView(
+                    list,
+                    filter: filtersOn ? view.filter : LibraryFilter.todos,
+                    sort: filtersOn ? view.sort : LibrarySort.ultimoLeido,
+                    query: _query,
+                  );
                   if (list.isEmpty) {
                     return SliverFillRemaining(
                       hasScrollBody: false,
@@ -397,6 +429,54 @@ class _BookCard extends StatelessWidget {
           Text(
             book.progress == 0 ? 'Nuevo' : '${(book.progress * 100).round()} %',
             style: Theme.of(context).textTheme.labelSmall,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ViewBar extends StatelessWidget {
+  const _ViewBar({required this.view, required this.onChanged});
+  final LibraryView view;
+  final ValueChanged<LibraryView> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 8, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final f in LibraryFilter.values)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(f.label),
+                        selected: view.filter == f,
+                        onSelected: (_) => onChanged(view.copyWith(filter: f)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          PopupMenuButton<LibrarySort>(
+            tooltip: 'Ordenar',
+            icon: const Icon(Icons.sort),
+            onSelected: (v) => onChanged(view.copyWith(sort: v)),
+            itemBuilder: (_) => [
+              for (final s in LibrarySort.values)
+                CheckedPopupMenuItem(
+                  value: s,
+                  checked: view.sort == s,
+                  child: Text(s.label),
+                ),
+            ],
           ),
         ],
       ),
