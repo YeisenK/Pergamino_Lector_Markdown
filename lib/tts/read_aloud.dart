@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:markdown/markdown.dart' as md;
 
 import '../data/settings.dart';
 import '../features/reader/md_renderer.dart';
@@ -79,6 +80,7 @@ class ReadAloud extends Notifier<ReadState> {
   String? _engineVoice;
   int _gen = 0;
   final _segCache = <int, List<Segment>>{};
+  bool _tables = false, _code = false, _footnotes = true;
   int _block = 0, _idx = 0;
 
   @override
@@ -87,9 +89,23 @@ class ReadAloud extends Notifier<ReadState> {
     return const ReadState();
   }
 
+  /// Bloques que no se leen según los ajustes «Qué leer en voz alta».
+  bool _skipBlock(md.Node n) {
+    if (n is! md.Element) return false;
+    if (n.tag == 'table') return !_tables;
+    if (n.tag == 'pre') return !_code;
+    if (n.tag == 'p' && n.textContent.trimLeft().startsWith('[^')) return !_footnotes;
+    return false;
+  }
+
   List<Segment> _segs(int b) => _segCache.putIfAbsent(b, () {
         final out = <Segment>[];
-        final parts = blockParts(_c!.blocks[b], _style!);
+        if (_skipBlock(_c!.blocks[b])) return out;
+        var parts = blockParts(_c!.blocks[b], _style!);
+        // tablas y código no producen fragmentos al pintarse: se leen como texto plano
+        if (parts.isEmpty && _c!.blocks[b].textContent.trim().isNotEmpty) {
+          parts = [_c!.blocks[b].textContent.replaceAll(RegExp(r'\s+'), ' ')];
+        }
         for (var p = 0; p < parts.length; p++) {
           for (final (s, e) in splitSentences(parts[p])) {
             out.add(Segment(b, p, s, e, parts[p].substring(s, e)));
@@ -130,10 +146,17 @@ class ReadAloud extends Notifier<ReadState> {
   }
 
   /// Empieza a leer desde el bloque [fromBlock].
-  Future<void> start(BookContent c, ReaderStyle style, {required int fromBlock}) async {
+  Future<void> start(BookContent c, ReaderStyle style,
+      {required int fromBlock,
+      bool tables = false,
+      bool code = false,
+      bool footnotes = true}) async {
     _gen++;
     await _engine?.stop();
     _c = c;
+    _tables = tables;
+    _code = code;
+    _footnotes = footnotes;
     _style = style;
     _segCache.clear();
     final pos = _firstFrom(fromBlock);

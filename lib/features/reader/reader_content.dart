@@ -35,3 +35,17 @@ BookContent parseBookText(String text) {
 
 final bookContentProvider = FutureProvider.family<BookContent, String>(
     (ref, path) => loadBook(path));
+
+final _wordCache = Expando<int>();
+
+/// Palabras totales del libro (calculado una vez por contenido).
+int wordCount(BookContent c) {
+  final cached = _wordCache[c];
+  if (cached != null) return cached;
+  var n = 0;
+  for (final b in c.blocks) {
+    n += RegExp(r'\S+').allMatches(b.textContent).length;
+  }
+  _wordCache[c] = n;
+  return n;
+}

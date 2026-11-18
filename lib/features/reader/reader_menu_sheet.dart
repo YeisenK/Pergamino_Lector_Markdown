@@ -2,7 +2,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
+
 import '../../data/bookmarks.dart';
+import '../../data/features.dart';
+import '../../domain/library_view.dart';
 import '../../data/highlights.dart';
 import 'highlight_sheet.dart';
 import 'book_search.dart';
@@ -45,12 +51,14 @@ class _Menu extends ConsumerStatefulWidget {
 
 class _MenuState extends ConsumerState<_Menu> {
   final _q = TextEditingController();
+  final _noteQ = TextEditingController();
   List<SearchHit> _hits = const [];
   String _last = '';
 
   @override
   void dispose() {
     _q.dispose();
+    _noteQ.dispose();
     super.dispose();
   }
 
@@ -77,12 +85,21 @@ class _MenuState extends ConsumerState<_Menu> {
         .toList()
       ..sort((a, b) => a.index.compareTo(b.index));
 
+    final features = ref.watch(featuresProvider);
+    final showChapterProgress = features.contains(Feature.timeLeft);
+    final canExport = features.contains(Feature.notesExport);
     final notes = ref
         .watch(highlightsProvider)
         .where((h) => h.bookId == widget.bookId)
+        .where((h) => !canExport || foldText('${h.text} ${h.note ?? ''}')
+            .contains(foldText(_noteQ.text.trim())))
         .toList()
       ..sort((a, b) =>
           a.block != b.block ? a.block.compareTo(b.block) : a.start.compareTo(b.start));
+    final allNotes = ref
+        .watch(highlightsProvider)
+        .where((h) => h.bookId == widget.bookId)
+        .toList();
 
     return Column(children: [
       const TabBar(tabs: [
@@ -98,12 +115,31 @@ class _MenuState extends ConsumerState<_Menu> {
             itemCount: c.chapterTitles.length,
             itemBuilder: (_, i) {
               final active = i == _currentChapter;
+              final start = c.chapterStarts[i];
+              final end = i + 1 < c.chapterStarts.length
+                  ? c.chapterStarts[i + 1]
+                  : c.blocks.length;
+              final frac = widget.current >= end
+                  ? 1.0
+                  : widget.current < start
+                      ? 0.0
+                      : (widget.current - start) / (end - start).clamp(1, 1 << 30);
               return ListTile(
                 selected: active,
                 title: Text(c.chapterTitles[i],
                     maxLines: 2, overflow: TextOverflow.ellipsis),
+                subtitle: showChapterProgress
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: LinearProgressIndicator(
+                          value: frac,
+                          minHeight: 3,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      )
+                    : null,
                 trailing: active ? const Icon(Icons.bookmark_outline, size: 18) : null,
-                onTap: () => _go(c.chapterStarts[i]),
+                onTap: () => _go(start),
               );
             },
           ),
@@ -141,7 +177,7 @@ class _MenuState extends ConsumerState<_Menu> {
                   },
                 ),
           // Notas y subrayados
-          notes.isEmpty
+          allNotes.isEmpty
               ? Center(
                   child: Padding(
                   padding: const EdgeInsets.all(32),
@@ -151,20 +187,61 @@ class _MenuState extends ConsumerState<_Menu> {
                       style: theme.textTheme.bodyMedium),
                 ))
               : Column(children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
+                  if (canExport)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: TextField(
+                        controller: _noteQ,
+                        decoration: InputDecoration(
+                          hintText: 'Buscar en notas',
+                          prefixIcon: const Icon(Icons.search),
+                          isDense: true,
+                          filled: true,
+                          fillColor: theme.colorScheme.onSurface.withValues(alpha: .06),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                  Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    TextButton.icon(
                       icon: const Icon(Icons.copy_all, size: 18),
-                      label: const Text('Copiar todo'),
+                      label: const Text('Copiar'),
                       onPressed: () {
                         Clipboard.setData(ClipboardData(
-                            text: exportHighlights(widget.title, notes)));
+                            text: exportHighlights(widget.title, allNotes)));
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                             content: Text('Notas copiadas como Markdown'),
                             duration: Duration(milliseconds: 1400)));
                       },
                     ),
-                  ),
+                    if (canExport)
+                      TextButton.icon(
+                        icon: const Icon(Icons.save_alt, size: 18),
+                        label: const Text('Guardar .md'),
+                        onPressed: () async {
+                          final text = exportHighlights(widget.title, allNotes);
+                          final saved = await FilePicker.saveFile(
+                            fileName: 'Notas - ${widget.title}.md'.replaceAll('/', '-'),
+                            bytes: Uint8List.fromList(utf8.encode(text)),
+                          );
+                          if (saved != null && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                content: Text('Notas guardadas'),
+                                duration: Duration(milliseconds: 1400)));
+                          }
+                        },
+                      ),
+                  ]),
+                  if (notes.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text('Ninguna nota coincide con la búsqueda.',
+                          style: theme.textTheme.bodyMedium),
+                    ),
                   Expanded(
                     child: ListView.builder(
                       itemCount: notes.length,

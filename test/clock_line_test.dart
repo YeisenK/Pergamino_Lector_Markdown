@@ -10,5 +10,9 @@ void main() {
         '13:05  ·  87 %  ·  42 %  ·  Capítulo 3');
     expect(clockLine(time: '13:05', battery: null, showBattery: true), '13:05');
     expect(clockLine(time: '13:05', progress: .5, showProgress: false), '13:05');
+    expect(clockLine(time: '13:05', progress: .5, showProgress: true, minutesLeft: 35),
+        '13:05  ·  50 %  ·  quedan ~35 min');
+    expect(clockLine(time: '13:05', progress: .5, showProgress: true, minutesLeft: 75),
+        '13:05  ·  50 %  ·  quedan ~1 h 15 min');
   });
 }

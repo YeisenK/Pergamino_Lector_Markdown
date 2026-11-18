@@ -13,6 +13,8 @@ import '../../data/book_repository.dart';
 import '../../data/bookmarks.dart';
 import '../../data/features.dart';
 import '../../data/highlights.dart';
+import '../../data/reading_speed.dart';
+import '../../domain/library_view.dart';
 import '../../data/settings.dart';
 import '../../domain/book.dart';
 import '../../tts/read_aloud.dart';
@@ -391,7 +393,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
     final reading = ref.watch(readAloudProvider);
     final bottomInset = MediaQuery.paddingOf(context).bottom;
-    final clockExtras = ref.watch(featuresProvider).contains(Feature.clockExtras);
+    final features = ref.watch(featuresProvider);
+    final clockExtras = features.contains(Feature.clockExtras);
+    final timeLeftOn = features.contains(Feature.timeLeft);
     // la barra grande y el icono quedan por encima de la zona de gestos del sistema
     final scrubBase = (reading.active ? 124.0 : 64.0) + bottomInset;
     final scrubIconBottom = (reading.active ? 128.0 : 72.0) + bottomInset;
@@ -455,6 +459,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                 child: ReaderClock(
                   color: palette.muted,
                   progress: _progress,
+                  minutesLeft: timeLeftOn
+                      ? minutesLeft(wordCount(c), _progress, ref.watch(readingWpmProvider))
+                      : null,
                   chapter: c.chapterTitles[_chapterIndexOf(c, _first)],
                   showBattery: clockExtras && settings.clockBattery,
                   showProgress: clockExtras && settings.clockProgress,
@@ -673,7 +680,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                       if (reading.active) {
                         _read.toggle();
                       } else {
-                        _read.start(c, style, fromBlock: _first);
+                        final sk = features.contains(Feature.voiceSkip);
+                        _read.start(c, style,
+                            fromBlock: _first,
+                            tables: sk && settings.voiceTables,
+                            code: sk && settings.voiceCode,
+                            footnotes: !sk || settings.voiceFootnotes);
                         setState(() => _controls = false);
                       }
                     },

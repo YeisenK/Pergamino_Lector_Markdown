@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../data/features.dart';
+import '../../data/settings.dart';
 import '../../tts/piper_engine.dart';
 import '../../tts/read_aloud.dart';
 import '../../tts/system_engine.dart';
@@ -144,6 +146,33 @@ class _VoicesPageState extends ConsumerState<VoicesPage> {
                 style: theme.textTheme.labelMedium?.copyWith(
                     color: _error != null ? theme.colorScheme.error : null)),
           ),
+        if (ref.watch(featuresProvider).contains(Feature.voiceSkip)) ...[
+          header('Qué leer'),
+          Builder(builder: (context) {
+            final st = ref.watch(settingsProvider);
+            final n = ref.read(settingsProvider.notifier);
+            return Column(children: [
+              SwitchListTile(
+                title: const Text('Tablas'),
+                subtitle: const Text('Desactivado: las tablas se saltan'),
+                value: st.voiceTables,
+                onChanged: (v) => n.update(st.copyWith(voiceTables: v)),
+              ),
+              SwitchListTile(
+                title: const Text('Bloques de código'),
+                subtitle: const Text('Desactivado: el código se salta'),
+                value: st.voiceCode,
+                onChanged: (v) => n.update(st.copyWith(voiceCode: v)),
+              ),
+              SwitchListTile(
+                title: const Text('Notas al pie'),
+                subtitle: const Text('Líneas que empiezan por [^'),
+                value: st.voiceFootnotes,
+                onChanged: (v) => n.update(st.copyWith(voiceFootnotes: v)),
+              ),
+            ]);
+          }),
+        ],
         header('Piper · sin conexión, rápidas'),
         for (final v in piperCatalog)
           Builder(builder: (context) {

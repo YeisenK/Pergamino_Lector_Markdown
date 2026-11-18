@@ -19,14 +19,27 @@ String clockLine({
   bool showBattery = false,
   double? progress,
   bool showProgress = false,
+  int? minutesLeft,
   String? chapter,
   bool showChapter = false,
 }) {
   final parts = <String>[time];
   if (showBattery && battery != null) parts.add('$battery %');
-  if (showProgress && progress != null) parts.add('${(progress * 100).round()} %');
+  if (showProgress && progress != null) {
+    final pct = '${(progress * 100).round()} %';
+    parts.add(minutesLeft == null
+        ? pct
+        : '$pct  ·  quedan ${_duration(minutesLeft)}');
+  }
   if (showChapter && chapter != null && chapter.isNotEmpty) parts.add(chapter);
   return parts.join('  ·  ');
+}
+
+/// «35 min» o «1 h 5 min».
+String _duration(int minutes) {
+  if (minutes < 60) return '~$minutes min';
+  final h = minutes ~/ 60, m = minutes % 60;
+  return m == 0 ? '~$h h' : '~$h h $m min';
 }
 
 /// Reloj pequeño que se redibuja al cambiar el minuto. La batería se vuelve
@@ -36,6 +49,7 @@ class ReaderClock extends StatefulWidget {
     super.key,
     required this.color,
     this.progress,
+    this.minutesLeft,
     this.chapter,
     this.showBattery = false,
     this.showProgress = false,
@@ -44,6 +58,7 @@ class ReaderClock extends StatefulWidget {
   });
   final Color color;
   final double? progress;
+  final int? minutesLeft;
   final String? chapter;
   final bool showBattery, showProgress, showChapter;
   final DateTime Function() now; // inyectable para pruebas
@@ -99,6 +114,7 @@ class _ReaderClockState extends State<ReaderClock> {
       showBattery: widget.showBattery,
       progress: widget.progress,
       showProgress: widget.showProgress,
+      minutesLeft: widget.minutesLeft,
       chapter: widget.chapter,
       showChapter: widget.showChapter,
     );
