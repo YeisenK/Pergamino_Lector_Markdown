@@ -144,20 +144,19 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                       : Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                'Biblioteca',
-                                style: GoogleFonts.literata(
-                                  fontSize: 34,
-                                  fontWeight: FontWeight.w600,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Biblioteca',
+                                  maxLines: 1,
+                                  style: GoogleFonts.literata(
+                                    fontSize: 34,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ),
-                            if (ref.watch(featuresProvider).contains(Feature.stats))
-                              IconButton(
-                                tooltip: 'Estadísticas',
-                                icon: const Icon(Icons.bar_chart_rounded),
-                                onPressed: () => context.push('/stats'),
-                              ),
                             PopupMenuButton<String>(
                               tooltip: 'Más',
                               icon: const Icon(Icons.more_vert),
@@ -167,6 +166,11 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                                   value: '/features',
                                   child: Text('Funciones'),
                                 ),
+                                if (ref.watch(featuresProvider).contains(Feature.stats))
+                                  const PopupMenuItem(
+                                    value: '/stats',
+                                    child: Text('Estadísticas'),
+                                  ),
                                 if (ref.watch(featuresProvider).contains(Feature.gestures))
                                   const PopupMenuItem(
                                     value: '/gestures',
