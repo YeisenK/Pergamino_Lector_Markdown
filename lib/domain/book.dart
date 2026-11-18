@@ -26,6 +26,15 @@ class Book {
         progress: progress ?? this.progress,
       );
 
+  Book withPath(String newPath) => Book(
+        id: id,
+        title: title,
+        path: newPath,
+        addedAt: addedAt,
+        lastOpened: lastOpened,
+        progress: progress,
+      );
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
