@@ -13,7 +13,9 @@ import '../../data/book_repository.dart';
 import '../../data/features.dart';
 import '../../data/highlights.dart';
 import '../../data/library_prefs.dart';
+import '../../data/gestures.dart';
 import '../../data/reading_speed.dart';
+import '../../data/stats_repository.dart';
 import '../../tts/read_aloud.dart';
 import '../../data/settings.dart';
 
@@ -87,6 +89,9 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       ref.invalidate(featuresProvider);
       ref.invalidate(libraryViewProvider);
       ref.invalidate(readingWpmProvider);
+      ref.invalidate(statsProvider);
+      ref.invalidate(statsGoalProvider);
+      ref.invalidate(gesturesProvider);
       ref.invalidate(ttsVoiceProvider);
       ref.invalidate(ttsRateProvider);
       setState(() => _message =
