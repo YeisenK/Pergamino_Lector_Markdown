@@ -80,7 +80,9 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       final prefs = await SharedPreferences.getInstance();
       final docs = await getApplicationDocumentsDirectory();
       final r = await restoreBackup(bytes,
-          prefs: prefs, booksDir: Directory(p.join(docs.path, 'books')));
+          prefs: prefs,
+          booksDir: Directory(p.join(docs.path, 'books')),
+          coversDir: Directory(p.join(docs.path, 'covers')));
       // los notifiers leen las preferencias al crearse: se recargan
       ref.invalidate(booksProvider);
       ref.invalidate(bookmarksProvider);

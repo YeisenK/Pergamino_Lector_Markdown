@@ -63,6 +63,10 @@ Uint8List buildBackup(SharedPreferences prefs) {
     if (!f.existsSync()) continue;
     final bytes = f.readAsBytesSync();
     archive.addFile(ArchiveFile.bytes('books/${b.id}.md', bytes));
+    final cover = b.coverPath == null ? null : File(b.coverPath!);
+    if (cover != null && cover.existsSync()) {
+      archive.addFile(ArchiveFile.bytes('covers/${b.id}.jpg', cover.readAsBytesSync()));
+    }
   }
   final out = ZipEncoder().encode(archive);
   return Uint8List.fromList(out);
@@ -74,6 +78,7 @@ Future<RestoreResult> restoreBackup(
   Uint8List zipBytes, {
   required SharedPreferences prefs,
   required Directory booksDir,
+  Directory? coversDir,
 }) async {
   final Archive archive;
   try {
@@ -118,7 +123,16 @@ Future<RestoreResult> restoreBackup(
     }
     final dest = File('${booksDir.path}/${b.id}.md');
     await dest.writeAsBytes(file.content as List<int>);
-    merged.add(b.withPath(dest.path));
+    String? coverPath;
+    final cover = archive.findFile('covers/${b.id}.jpg');
+    if (cover != null && coversDir != null) {
+      await coversDir.create(recursive: true);
+      final cf = File('${coversDir.path}/${b.id}.jpg');
+      await cf.writeAsBytes(cover.content as List<int>);
+      coverPath = cf.path;
+    }
+    merged.add(b.withPath(dest.path).copyWith(
+        coverPath: coverPath, clearCover: coverPath == null));
     ids.add(b.id);
     added++;
   }

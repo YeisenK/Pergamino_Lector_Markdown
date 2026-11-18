@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -91,34 +94,102 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     if (mounted) setState(_selected.clear);
   }
 
-  Widget _selectionBar(List<Book> all) => Row(
-    children: [
-      IconButton(
-        tooltip: 'Cancelar selección',
-        icon: const Icon(Icons.close),
-        onPressed: () => setState(_selected.clear),
+  Future<void> _rename(Book b) async {
+    final ctrl = TextEditingController(text: b.title);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Renombrar libro'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          onSubmitted: (v) => Navigator.pop(c, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, ctrl.text),
+            child: const Text('Guardar'),
+          ),
+        ],
       ),
-      Expanded(
-        child: Text(
-          '${_selected.length} seleccionado${_selected.length == 1 ? '' : 's'}',
-          style: GoogleFonts.literata(
-            fontSize: 22,
-            fontWeight: FontWeight.w600,
+    );
+    ctrl.dispose();
+    if (name == null || name.trim().isEmpty) return;
+    await ref.read(booksProvider.notifier).rename(b.id, name);
+    if (mounted) setState(_selected.clear);
+  }
+
+  Future<void> _pickCover(Book b) async {
+    final res = await FilePicker.pickFiles(type: FileType.image);
+    final path = res.isEmpty ? null : res.first.path;
+    if (path == null) return;
+    final ok = await ref
+        .read(booksProvider.notifier)
+        .setCover(b.id, await File(path).readAsBytes());
+    if (!mounted) return;
+    if (ok) setState(_selected.clear);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+          content: Text(ok ? 'Portada cambiada' : 'Ese archivo no es una imagen')));
+  }
+
+  Widget _selectionBar(List<Book> all) {
+    final one = _selected.length == 1
+        ? all.where((b) => b.id == _selected.first).firstOrNull
+        : null;
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Cancelar selección',
+          icon: const Icon(Icons.close),
+          onPressed: () => setState(_selected.clear),
+        ),
+        Expanded(
+          child: Text(
+            '${_selected.length} seleccionado${_selected.length == 1 ? '' : 's'}',
+            style: GoogleFonts.literata(fontSize: 22, fontWeight: FontWeight.w600),
           ),
         ),
-      ),
-      IconButton(
-        tooltip: 'Seleccionar todos',
-        icon: const Icon(Icons.select_all),
-        onPressed: () => setState(() => _selected.addAll(all.map((b) => b.id))),
-      ),
-      IconButton(
-        tooltip: 'Eliminar seleccionados',
-        icon: const Icon(Icons.delete_outline),
-        onPressed: () => _deleteSelected(all),
-      ),
-    ],
-  );
+        if (one != null) ...[
+          IconButton(
+            tooltip: 'Renombrar',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () => _rename(one),
+          ),
+          IconButton(
+            tooltip: 'Cambiar portada',
+            icon: const Icon(Icons.image_outlined),
+            onPressed: () => _pickCover(one),
+          ),
+          if (one.coverPath != null)
+            IconButton(
+              tooltip: 'Quitar portada',
+              icon: const Icon(Icons.hide_image_outlined),
+              onPressed: () async {
+                await ref.read(booksProvider.notifier).removeCover(one.id);
+                if (mounted) setState(_selected.clear);
+              },
+            ),
+        ],
+        IconButton(
+          tooltip: 'Seleccionar todos',
+          icon: const Icon(Icons.select_all),
+          onPressed: () => setState(() => _selected.addAll(all.map((b) => b.id))),
+        ),
+        IconButton(
+          tooltip: 'Eliminar seleccionados',
+          icon: const Icon(Icons.delete_outline),
+          onPressed: () => _deleteSelected(all),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -330,6 +401,12 @@ class _BookCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
+  DecorationImage? _coverImage() {
+    final path = book.coverPath;
+    if (path == null || !File(path).existsSync()) return null;
+    return DecorationImage(image: FileImage(File(path)), fit: BoxFit.cover);
+  }
+
   Color get _cover {
     final h = (book.title.hashCode.abs() % 360).toDouble();
     return HSLColor.fromAHSL(1, h, .28, .32).toColor();
@@ -350,6 +427,7 @@ class _BookCard extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: _cover,
+                image: _coverImage(),
                 borderRadius: BorderRadius.circular(8),
                 border: selected
                     ? Border.all(

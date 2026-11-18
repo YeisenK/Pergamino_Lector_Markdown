@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/book.dart';
+import 'covers.dart';
 
 const _kBooks = 'books_v1';
 
@@ -115,6 +117,35 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
       return file;
     }
     return heading;
+  }
+
+  /// Pone una portada (la imagen se reduce y se guarda en la app). Null si no es imagen.
+  Future<bool> setCover(String id, Uint8List imageBytes) async {
+    final jpg = encodeCover(imageBytes);
+    if (jpg == null) return false;
+    final dir = Directory(p.join((await getApplicationDocumentsDirectory()).path, 'covers'));
+    await dir.create(recursive: true);
+    final file = File(coverFileFor(dir, id));
+    await file.writeAsBytes(jpg);
+    await _save([
+      for (final b in state.value ?? [])
+        if (b.id == id) b.copyWith(coverPath: file.path) else b
+    ]);
+    return true;
+  }
+
+  Future<void> removeCover(String id) async {
+    for (final b in state.value ?? []) {
+      if (b.id == id && b.coverPath != null) {
+        try {
+          await File(b.coverPath!).delete();
+        } catch (_) {}
+      }
+    }
+    await _save([
+      for (final b in state.value ?? [])
+        if (b.id == id) b.copyWith(clearCover: true) else b
+    ]);
   }
 
   Future<void> rename(String id, String title) async {
