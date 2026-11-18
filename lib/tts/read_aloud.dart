@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:markdown/markdown.dart' as md;
 
@@ -56,19 +58,32 @@ class Segment {
   const Segment(this.block, this.part, this.start, this.end, this.text);
 }
 
+/// Cuándo se detiene sola la lectura.
+enum SleepMode { none, after, chapterEnd }
+
 class ReadState {
   final bool active; // hay lectura en curso o en pausa
   final bool playing;
   final bool loading; // preparando la primera frase
   final Segment? segment;
   final String? error;
+  final SleepMode sleepMode;
+  final DateTime? sleepUntil; // solo con SleepMode.after
   const ReadState({
     this.active = false,
     this.playing = false,
     this.loading = false,
     this.segment,
     this.error,
+    this.sleepMode = SleepMode.none,
+    this.sleepUntil,
   });
+
+  /// Tiempo que falta para la parada, o null si no hay temporizador por tiempo.
+  Duration? sleepLeft(DateTime now) =>
+      sleepUntil == null ? null : sleepUntil!.difference(now).isNegative
+          ? Duration.zero
+          : sleepUntil!.difference(now);
 }
 
 final readAloudProvider = NotifierProvider<ReadAloud, ReadState>(ReadAloud.new);
@@ -80,12 +95,22 @@ class ReadAloud extends Notifier<ReadState> {
   String? _engineVoice;
   int _gen = 0;
   final _segCache = <int, List<Segment>>{};
-  bool _tables = false, _code = false, _footnotes = true;
   int _block = 0, _idx = 0;
+  bool _tables = false, _code = false, _footnotes = true;
+
+  // temporizador de sueño
+  Timer? _sleepTimer;
+  Timer? _sleepTick;
+  bool _stopAfterSegment = false;
+  int? _sleepChapter;
 
   @override
   ReadState build() {
-    ref.onDispose(() => _engine?.dispose());
+    ref.onDispose(() {
+      _sleepTimer?.cancel();
+      _sleepTick?.cancel();
+      _engine?.dispose();
+    });
     return const ReadState();
   }
 
@@ -113,6 +138,14 @@ class ReadAloud extends Notifier<ReadState> {
         }
         return out;
       });
+
+  int _chapterOf(int block) {
+    var ch = 0;
+    for (var i = 0; i < _c!.chapterStarts.length; i++) {
+      if (_c!.chapterStarts[i] <= block) ch = i;
+    }
+    return ch;
+  }
 
   /// Primera posición con texto a partir de [block]; null si no queda nada.
   (int, int)? _firstFrom(int block) {
@@ -154,10 +187,10 @@ class ReadAloud extends Notifier<ReadState> {
     _gen++;
     await _engine?.stop();
     _c = c;
+    _style = style;
     _tables = tables;
     _code = code;
     _footnotes = footnotes;
-    _style = style;
     _segCache.clear();
     final pos = _firstFrom(fromBlock);
     if (pos == null) {
@@ -166,7 +199,13 @@ class ReadAloud extends Notifier<ReadState> {
     }
     _block = pos.$1;
     _idx = pos.$2;
-    state = ReadState(active: true, playing: true, loading: true, segment: _segs(_block)[_idx]);
+    state = ReadState(
+        active: true,
+        playing: true,
+        loading: true,
+        segment: _segs(_block)[_idx],
+        sleepMode: state.sleepMode,
+        sleepUntil: state.sleepUntil);
     _run();
   }
 
@@ -175,13 +214,24 @@ class ReadAloud extends Notifier<ReadState> {
     try {
       await _ensureEngine();
       while (gen == _gen) {
+        // temporizador «fin de capítulo»: se para al entrar en otro capítulo
+        if (state.sleepMode == SleepMode.chapterEnd &&
+            _sleepChapter != null &&
+            _chapterOf(_block) != _sleepChapter) {
+          _finish();
+          return;
+        }
         final seg = _segs(_block)[_idx];
         final nx = _after(_block, _idx);
-        state = ReadState(active: true, playing: true, loading: false, segment: seg);
+        state = _withSegment(seg, playing: true, loading: false);
         await _engine!.speak(seg.text, next: nx == null ? null : _segs(nx.$1)[nx.$2].text);
         if (gen != _gen) return;
+        if (_stopAfterSegment) {
+          _finish();
+          return;
+        }
         if (nx == null) {
-          state = const ReadState();
+          _finish();
           return;
         }
         _block = nx.$1;
@@ -189,8 +239,87 @@ class ReadAloud extends Notifier<ReadState> {
       }
     } catch (e) {
       if (gen == _gen) {
-        state = ReadState(active: true, playing: false, segment: state.segment, error: '$e');
+        state = ReadState(
+            active: true,
+            playing: false,
+            segment: state.segment,
+            error: '$e',
+            sleepMode: state.sleepMode,
+            sleepUntil: state.sleepUntil);
       }
+    }
+  }
+
+  ReadState _withSegment(Segment? seg, {required bool playing, required bool loading}) =>
+      ReadState(
+        active: true,
+        playing: playing,
+        loading: loading,
+        segment: seg,
+        sleepMode: state.sleepMode,
+        sleepUntil: state.sleepUntil,
+      );
+
+  void _finish() {
+    _stopAfterSegment = false;
+    _cancelSleep();
+    state = const ReadState();
+  }
+
+  // ---- temporizador de sueño ----
+
+  /// Para la lectura después de [after] (con la frase actual terminada), o al
+  /// llegar al final del capítulo actual si [chapterEnd] es verdadero.
+  void setSleep({Duration? after, bool chapterEnd = false}) {
+    _cancelSleep();
+    if (!state.active) return;
+    if (chapterEnd) {
+      _sleepChapter = _chapterOf(_block);
+      state = _sleepState(SleepMode.chapterEnd, null);
+      return;
+    }
+    if (after == null) return;
+    final until = DateTime.now().add(after);
+    _sleepTimer = Timer(after, _sleepDue);
+    _sleepTick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (state.sleepMode == SleepMode.after) {
+        state = _sleepState(SleepMode.after, until);
+      }
+    });
+    state = _sleepState(SleepMode.after, until);
+  }
+
+  ReadState _sleepState(SleepMode mode, DateTime? until) => ReadState(
+        active: state.active,
+        playing: state.playing,
+        loading: state.loading,
+        segment: state.segment,
+        error: state.error,
+        sleepMode: mode,
+        sleepUntil: until,
+      );
+
+  void cancelSleep() {
+    _cancelSleep();
+    if (state.active) state = _sleepState(SleepMode.none, null);
+  }
+
+  void _cancelSleep() {
+    _sleepTimer?.cancel();
+    _sleepTick?.cancel();
+    _sleepTimer = null;
+    _sleepTick = null;
+    _sleepChapter = null;
+  }
+
+  void _sleepDue() {
+    _sleepTimer = null;
+    if (!state.active) return;
+    if (state.playing) {
+      // deja terminar la frase actual para no cortar una palabra
+      _stopAfterSegment = true;
+    } else {
+      _finish();
     }
   }
 
@@ -198,12 +327,13 @@ class ReadAloud extends Notifier<ReadState> {
     if (!state.active || !state.playing) return;
     _gen++;
     await _engine?.stop();
-    state = ReadState(active: true, playing: false, segment: state.segment);
+    state = _withSegment(state.segment, playing: false, loading: false);
   }
 
   Future<void> resume() async {
     if (!state.active || state.playing) return;
-    state = ReadState(active: true, playing: true, loading: true, segment: state.segment);
+    _stopAfterSegment = false;
+    state = _withSegment(state.segment, playing: true, loading: true);
     _run();
   }
 
@@ -216,7 +346,7 @@ class ReadAloud extends Notifier<ReadState> {
     await _engine?.stop();
     _block = pos.$1;
     _idx = pos.$2;
-    state = ReadState(active: true, playing: wasPlaying, segment: _segs(_block)[_idx]);
+    state = _withSegment(_segs(_block)[_idx], playing: wasPlaying, loading: false);
     if (wasPlaying) _run();
   }
 
@@ -231,6 +361,7 @@ class ReadAloud extends Notifier<ReadState> {
 
   Future<void> stop() async {
     _gen++;
+    _cancelSleep();
     await _engine?.stop();
     state = const ReadState();
   }

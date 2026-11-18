@@ -24,6 +24,7 @@ import 'md_renderer.dart';
 import 'reader_clock.dart';
 import 'reader_content.dart';
 import 'reader_menu_sheet.dart';
+import 'sleep_sheet.dart';
 import 'typography_sheet.dart';
 
 class ReaderPage extends ConsumerStatefulWidget {
@@ -622,6 +623,18 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
               onRate: _read.setRate,
               onVoices: () => context.push('/voices'),
               onClose: _read.stop,
+              sleepOn: features.contains(Feature.sleepTimer),
+              sleepText: sleepLabel(reading, DateTime.now()),
+              sleepActive: reading.sleepMode != SleepMode.none,
+              onSleep: () async {
+                final r = await showSleepSheet(context, reading);
+                if (r == null) return;
+                if (r.cancel) {
+                  _read.cancelSleep();
+                } else {
+                  _read.setSleep(after: r.after, chapterEnd: r.chapterEnd);
+                }
+              },
             ),
           ),
         // barra superior
@@ -815,6 +828,10 @@ class _ScrubBar extends StatelessWidget {
 
 class _Player extends StatelessWidget {
   const _Player({
+    this.sleepOn = false,
+    this.sleepText = '',
+    this.sleepActive = false,
+    this.onSleep,
     required this.state,
     required this.palette,
     required this.rate,
@@ -825,6 +842,9 @@ class _Player extends StatelessWidget {
     required this.onVoices,
     required this.onClose,
   });
+  final bool sleepOn, sleepActive;
+  final String sleepText;
+  final VoidCallback? onSleep;
   final ReadState state;
   final ReaderPalette palette;
   final double rate;
@@ -886,6 +906,16 @@ class _Player extends StatelessWidget {
               child: Text('${rate.toStringAsFixed(rate * 10 % 10 == 0 ? 0 : 1)}×',
                   style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
+            if (sleepOn)
+              TextButton.icon(
+                onPressed: onSleep,
+                icon: Icon(sleepActive ? Icons.bedtime : Icons.bedtime_outlined,
+                    size: 18, color: sleepActive ? palette.accent : fg),
+                label: Text(sleepActive ? sleepText : '',
+                    style: TextStyle(color: fg, fontSize: 12)),
+                style: TextButton.styleFrom(
+                    foregroundColor: fg, minimumSize: const Size(40, 40)),
+              ),
             IconButton(
                 tooltip: 'Voces',
                 icon: const Icon(Icons.record_voice_over_outlined),
