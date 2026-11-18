@@ -376,3 +376,91 @@ List<InlineSpan> _inline(List<md.Node>? nodes, ReaderStyle s, TextStyle base) {
   }
   return out;
 }
+
+// ---- soporte del modo paginado ----
+
+/// Información de un bloque de texto que se puede partir en páginas
+/// (párrafos y encabezados). Otros bloques se colocan enteros.
+class TextBlockInfo {
+  final List<InlineSpan> spans; // planos: un TextSpan por fragmento de estilo
+  final TextStyle base;
+  final double padTop, padBottom;
+  final TextAlign align;
+  const TextBlockInfo(this.spans, this.base, this.padTop, this.padBottom, this.align);
+}
+
+TextBlockInfo? textBlockInfo(md.Node node, ReaderStyle s) {
+  if (node is! md.Element) return null;
+  final tag = node.tag;
+  if (tag == 'p') {
+    return TextBlockInfo(
+      _inline(node.children, s, s.body),
+      s.body,
+      0,
+      s.fontSize * .85,
+      s.justify ? TextAlign.justify : TextAlign.start,
+    );
+  }
+  const scales = {'h1': 1.7, 'h2': 1.4, 'h3': 1.2, 'h4': 1.1, 'h5': 1.0, 'h6': .95};
+  final scale = scales[tag];
+  if (scale == null) return null;
+  final base = s.body.copyWith(
+      fontSize: s.fontSize * scale, fontWeight: FontWeight.w700, height: 1.25);
+  return TextBlockInfo(
+    _inline(node.children, s, base),
+    base,
+    s.fontSize * 1.2,
+    s.fontSize * .6,
+    TextAlign.start,
+  );
+}
+
+/// Parte de un bloque de texto entre dos desplazamientos (caracteres), conservando estilos.
+List<InlineSpan> sliceSpans(List<InlineSpan> spans, int start, int end) {
+  final out = <InlineSpan>[];
+  var pos = 0;
+  for (final sp in spans) {
+    final t = sp as TextSpan;
+    final text = t.text ?? '';
+    final a = pos, b = pos + text.length;
+    pos = b;
+    final from = start.clamp(a, b) - a;
+    final to = end.clamp(a, b) - a;
+    if (to > from) out.add(TextSpan(text: text.substring(from, to), style: t.style));
+  }
+  return out;
+}
+
+int spansLength(List<InlineSpan> spans) =>
+    spans.fold(0, (n, sp) => n + ((sp as TextSpan).text?.length ?? 0));
+
+/// Un trozo de párrafo o encabezado dentro de una página.
+Widget renderTextSlice(TextBlockInfo info, int start, int end, BlockCtx ctx,
+    {required bool first}) {
+  final spans = sliceSpans(info.spans, start, end);
+  return Padding(
+    padding: EdgeInsets.only(top: first ? info.padTop : 0, bottom: info.padBottom),
+    child: _rich(spans, ctx, align: info.align),
+  );
+}
+
+/// Desplaza las marcas de un bloque al trozo [start, end) que se muestra.
+List<Mark> shiftMarks(List<Mark> marks, int start, int end) {
+  final out = <Mark>[];
+  for (final m in marks) {
+    final a = (m.start.clamp(start, end)) - start;
+    final b = (m.end.clamp(start, end)) - start;
+    if (b > a) {
+      out.add(Mark(
+        key: m.key,
+        part: m.part,
+        start: a,
+        end: b,
+        color: m.color,
+        underline: m.underline,
+        onTap: m.onTap,
+      ));
+    }
+  }
+  return out;
+}

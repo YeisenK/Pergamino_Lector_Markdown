@@ -102,6 +102,20 @@ class TypographySheet extends ConsumerWidget {
               value: s.justify,
               onChanged: (v) => n.update(s.copyWith(justify: v)),
             ),
+            if (ref.watch(featuresProvider).contains(Feature.paginated)) ...[
+              const SizedBox(height: 6),
+              Text('Forma de leer', style: label),
+              const SizedBox(height: 8),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Desplazar')),
+                  ButtonSegment(value: true, label: Text('Páginas')),
+                ],
+                selected: {s.paged},
+                onSelectionChanged: (v) => n.update(s.copyWith(paged: v.first)),
+              ),
+              const SizedBox(height: 12),
+            ],
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Mostrar reloj'),

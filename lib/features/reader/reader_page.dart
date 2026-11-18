@@ -27,6 +27,8 @@ import 'md_renderer.dart';
 import 'reader_clock.dart';
 import 'reader_content.dart';
 import 'reader_menu_sheet.dart';
+import 'pagination.dart';
+import 'paged_view.dart';
 import 'sleep_sheet.dart';
 import 'typography_sheet.dart';
 
@@ -54,6 +56,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
   ReadingTracker? _tracker;
   int _totalWords = 0;
   BookContent? _cached;
+  Paginator? _pager;
+  String _pagerKey = '';
+  final PageController _pc = PageController();
+  bool _pagedNow = false;
+  int _pageIdx = 0;
   ReaderStyle? _cachedStyle;
 
   // scroll rápido (barra de progreso arrastrable)
@@ -84,6 +91,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
     WidgetsBinding.instance.removeObserver(this);
     _endSession();
     _positions.itemPositions.removeListener(_onScroll);
+    _pc.dispose();
     _debounce?.cancel();
     _brightnessHide?.cancel();
     _scrubHide?.cancel();
@@ -96,7 +104,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
   }
 
   void _onScroll() {
-    if (!_restored) return;
+    if (!_restored || _pagedNow) return;
     _activity();
     final pos = _positions.itemPositions.value
         .where((p) => p.itemTrailingEdge > 0 && p.itemLeadingEdge < 1);
@@ -232,10 +240,49 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
               footnotes: true);
         }
       case GestureAction.pagePrev:
+        if (_pagedNow) _pc.previousPage(duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
       case GestureAction.pageNext:
-        // se activa con el modo paginado (fase siguiente)
-        break;
+        if (_pagedNow) _pc.nextPage(duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
     }
+  }
+
+  // ---- modo paginado ----
+
+  Widget _pagedView(BookContent c, ReaderStyle style, Map<int, List<Mark>> marks,
+      double topPad, double side) {
+    final pager = _pager!;
+    return PageView.builder(
+      controller: _pc,
+      itemCount: pager.pages.length,
+      onPageChanged: (i) => _onPageChanged(c, i),
+      itemBuilder: (_, i) => Padding(
+        padding: EdgeInsets.fromLTRB(side, topPad, side, 96),
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: pageContent(
+            pager.pages[i],
+            c,
+            style,
+            marks,
+            (block, part, s, e, t, note) => _onSelect(c, block, part, s, e, t, note),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _onPageChanged(BookContent c, int i) {
+    final pager = _pager;
+    if (pager == null || i >= pager.pages.length) return;
+    _pageIdx = i;
+    _first = pager.pages[i].firstBlock;
+    _last = i + 1 < pager.pages.length ? pager.pages[i + 1].firstBlock - 1 : _total - 1;
+    _progress = _total <= 1 ? 0 : (_first / (_total - 1)).clamp(0.0, 1.0);
+    _activity();
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 700), _persist);
+    pager.advance(maxPages: 10); // mantiene páginas por delante
+    setState(() {});
   }
 
   String _chapterOf(BookContent c, int block) {
@@ -317,7 +364,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
     final idx = (f * (c.blocks.length - 1)).round();
     final ch = _chapterIndexOf(c, idx);
     if (ch != _scrubChapter && _scrubChapter != -1) HapticFeedback.selectionClick();
-    _items.jumpTo(index: idx);
+    if (_pagedNow) {
+      _pc.jumpToPage(_pager?.pageOfBlock(idx) ?? 0);
+    } else {
+      _items.jumpTo(index: idx);
+    }
     setState(() {
       _scrubFrac = f;
       _scrubChapter = ch;
@@ -338,10 +389,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
         initialTab: tab);
     if (idx != null && mounted) {
       setState(() => _controls = false);
-      _items.scrollTo(
-          index: idx,
-          duration: const Duration(milliseconds: 350),
-          curve: Curves.easeOutCubic);
+      if (_pagedNow) {
+        _pc.jumpToPage(_pager?.pageOfBlock(idx) ?? 0);
+      } else {
+        _items.scrollTo(
+            index: idx,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic);
+      }
     }
   }
 
@@ -404,6 +459,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
     ref.listen<String?>(ttsVoiceProvider, (_, _) => _read.voiceChanged());
     ref.listen<ReadState>(readAloudProvider, (prev, next) {
       if (next.playing) _activity();
+      final seg = next.segment;
+      if (_pagedNow && seg != null && next.playing && _pager != null) {
+        final p = _pager!.pageOfBlock(seg.block);
+        if (p != _pageIdx && _pc.hasClients) {
+          _pc.animateToPage(p,
+              duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
+        }
+      }
     });
     final books = ref.watch(booksProvider).value ?? [];
     final book = books.where((b) => b.id == widget.bookId).firstOrNull;
@@ -508,6 +571,24 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
     return LayoutBuilder(builder: (context, box) {
       final side = ((box.maxWidth - settings.maxWidth) / 2)
           .clamp(settings.margin, 4000.0);
+      final paged = ref.read(featuresProvider).contains(Feature.paginated) && settings.paged;
+      _pagedNow = paged;
+      final topPad = top + (settings.showClock ? 40 : 24);
+      if (paged) {
+        final cw = settings.maxWidth.clamp(0, box.maxWidth - 2 * settings.margin).toDouble();
+        final ch = box.maxHeight - topPad - 96 - 8;
+        final key = '$cw|$ch|${settings.fontSize}|${settings.lineHeight}|${settings.font.name}|'
+            '${settings.justify}|${c.blocks.length}';
+        if (key != _pagerKey) {
+          _pagerKey = key;
+          _pager = Paginator(content: c, style: style, width: cw, height: ch);
+          _pageIdx = _pager!.pageOfBlock(_first);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _pc.hasClients) _pc.jumpToPage(_pageIdx);
+          });
+        }
+        _pager!.advance(maxPages: 6);
+      }
       return Stack(children: [
         Listener(
           behavior: HitTestBehavior.translucent,
@@ -522,7 +603,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
           },
           onPointerUp: (e) => _pointerUp(e, box.maxWidth),
           onPointerCancel: (_) => _downPos = null,
-          child: ScrollablePositionedList.builder(
+          child: paged
+              ? _pagedView(c, style, marksByBlock, topPad, side)
+              : ScrollablePositionedList.builder(
             itemScrollController: _items,
             itemPositionsListener: _positions,
             initialScrollIndex: initial,

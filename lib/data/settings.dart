@@ -33,6 +33,7 @@ class ReaderSettings {
   final ReaderFont font;
   final bool justify;
   final bool showClock;
+  final bool paged; // modo paginado (requiere la función activa)
   final bool clockBattery;
   final bool clockProgress;
   final bool clockChapter;
@@ -49,6 +50,7 @@ class ReaderSettings {
     this.font = ReaderFont.literata,
     this.justify = false,
     this.showClock = false,
+    this.paged = false,
     this.clockBattery = true,
     this.clockProgress = false,
     this.clockChapter = false,
@@ -66,6 +68,7 @@ class ReaderSettings {
     ReaderFont? font,
     bool? justify,
     bool? showClock,
+    bool? paged,
     bool? clockBattery,
     bool? clockProgress,
     bool? clockChapter,
@@ -83,6 +86,7 @@ class ReaderSettings {
         font: font ?? this.font,
         justify: justify ?? this.justify,
         showClock: showClock ?? this.showClock,
+        paged: paged ?? this.paged,
         clockBattery: clockBattery ?? this.clockBattery,
         clockProgress: clockProgress ?? this.clockProgress,
         clockChapter: clockChapter ?? this.clockChapter,
@@ -105,6 +109,7 @@ class ReaderSettings {
         'font': font.name,
         'justify': justify,
         'showClock': showClock,
+        'paged': paged,
         'clockBattery': clockBattery,
         'clockProgress': clockProgress,
         'clockChapter': clockChapter,
@@ -126,6 +131,7 @@ class ReaderSettings {
       font: ReaderFont.values.asNameMap()[j['font']] ?? d.font,
       justify: j['justify'] as bool? ?? d.justify,
       showClock: j['showClock'] as bool? ?? d.showClock,
+      paged: j['paged'] as bool? ?? d.paged,
       clockBattery: j['clockBattery'] as bool? ?? d.clockBattery,
       clockProgress: j['clockProgress'] as bool? ?? d.clockProgress,
       clockChapter: j['clockChapter'] as bool? ?? d.clockChapter,
