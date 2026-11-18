@@ -7,7 +7,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app/incoming_file.dart';
 import 'app/router.dart';
 import 'app/theme.dart';
+import 'data/auto_backup.dart';
+import 'data/features.dart';
 import 'data/settings.dart';
+
+final rootMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +37,15 @@ class _PergaminoAppState extends ConsumerState<PergaminoApp> {
   void initState() {
     super.initState();
     IncomingFile.listen(ref);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!ref.read(featuresProvider).contains(Feature.backup)) return;
+      final msg = await runAutoBackupIfDue(ref.read(prefsProvider), DateTime.now());
+      if (msg != null) {
+        rootMessengerKey.currentState
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(msg)));
+      }
+    });
   }
 
   @override
@@ -40,6 +53,7 @@ class _PergaminoAppState extends ConsumerState<PergaminoApp> {
     final s = ref.watch(settingsProvider);
     final p = s.palette;
     return MaterialApp.router(
+      scaffoldMessengerKey: rootMessengerKey,
       title: 'Pergamino',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(p ?? ReaderPalette.paper),

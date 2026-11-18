@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart' show getExternalStorageDirectory, getApplicationDocumentsDirectory;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/auto_backup.dart';
 import '../../data/backup.dart';
 import '../../data/bookmarks.dart';
 import '../../data/book_repository.dart';
@@ -134,6 +136,54 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           icon: const Icon(Icons.restore),
           label: const Text('Restaurar desde una copia'),
         ),
+        const SizedBox(height: 28),
+        const Divider(),
+        Text('Copia automática', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Cada 7 días, al abrir Pergamino, se guarda una copia dentro del almacenamiento de la app (se conservan las 3 últimas). Para tener una copia fuera del teléfono, usa «Crear copia en el teléfono» de arriba.',
+          style: theme.textTheme.bodySmall,
+        ),
+        Builder(builder: (context) {
+          final auto = ref.watch(autoBackupProvider);
+          final folder = auto.folder;
+          return Column(children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Copia automática semanal'),
+              subtitle: Text(folder == null
+                  ? 'Desactivada'
+                  : '$folder${auto.last == null ? '' : ' · última: ${auto.last!.day}/${auto.last!.month}'}'),
+              value: folder != null,
+              onChanged: (v) async {
+                if (!v) {
+                  ref.read(autoBackupProvider.notifier).setFolder(null);
+                  return;
+                }
+                // Carpeta propia de la app: Android no deja escribir en otras carpetas sin permisos especiales.
+                final base = await getExternalStorageDirectory() ??
+                    await getApplicationDocumentsDirectory();
+                ref
+                    .read(autoBackupProvider.notifier)
+                    .setFolder(p.join(base.path, 'copias-automaticas'));
+              },
+            ),
+            if (folder != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Hacer una copia automática ahora'),
+                  onPressed: () async {
+                    final msg = await runAutoBackupIfDue(
+                        await SharedPreferences.getInstance(), DateTime.now(),
+                        force: true);
+                    if (mounted) setState(() => _message = msg);
+                  },
+                ),
+              ),
+          ]);
+        }),
         if (_busy) ...[
           const SizedBox(height: 24),
           const Center(child: CircularProgressIndicator()),
