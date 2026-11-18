@@ -181,6 +181,8 @@ class ReadAloud extends Notifier<ReadState> {
   /// Empieza a leer desde el bloque [fromBlock].
   Future<void> start(BookContent c, ReaderStyle style,
       {required int fromBlock,
+      int part = -1,
+      int offset = 0,
       bool tables = false,
       bool code = false,
       bool footnotes = true}) async {
@@ -192,7 +194,13 @@ class ReadAloud extends Notifier<ReadState> {
     _code = code;
     _footnotes = footnotes;
     _segCache.clear();
-    final pos = _firstFrom(fromBlock);
+    var pos = _firstFrom(fromBlock);
+    if (pos != null && part >= 0) {
+      // primera frase del fragmento que contiene el punto donde se tocó
+      final segs = _segs(fromBlock);
+      final i = segs.indexWhere((s) => s.part == part && s.end > offset);
+      if (i >= 0) pos = (fromBlock, i);
+    }
     if (pos == null) {
       state = const ReadState(error: 'No hay texto para leer aquí.');
       return;

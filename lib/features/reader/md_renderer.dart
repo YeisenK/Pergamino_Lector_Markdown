@@ -52,8 +52,9 @@ class BlockCtx {
   final List<Mark> marks;
   final SelectAction? onSelect; // si es null el texto no es seleccionable
   final void Function(String)? onPart; // recoge el texto de cada fragmento
+  final void Function(int part, int start)? onRead; // «Leer desde aquí»
   int _part = 0;
-  BlockCtx({this.marks = const [], this.onSelect, this.onPart});
+  BlockCtx({this.marks = const [], this.onSelect, this.onPart, this.onRead});
   int _next() => _part++;
 }
 
@@ -165,6 +166,15 @@ Widget _rich(List<InlineSpan> spans, BlockCtx c, {TextAlign? align}) {
       final v = state.textEditingValue;
       final sel = v.selection;
       final items = <ContextMenuButtonItem>[];
+      if (sel.isValid && c.onRead != null) {
+        items.add(ContextMenuButtonItem(
+          label: 'Leer desde aquí',
+          onPressed: () {
+            c.onRead!(part, sel.start);
+            state.hideToolbar();
+          },
+        ));
+      }
       if (sel.isValid && !sel.isCollapsed) {
         final text = sel.textInside(v.text);
         items.add(ContextMenuButtonItem(

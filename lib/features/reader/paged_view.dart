@@ -13,8 +13,9 @@ Widget pageContent(
   BookContent c,
   ReaderStyle style,
   Map<int, List<Mark>> marks,
-  PageSelect onSelect,
-) {
+  PageSelect onSelect, {
+  void Function(int block, int part, int start)? onRead,
+}) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -26,6 +27,7 @@ Widget pageContent(
             BlockCtx(
               marks: marks[it.block] ?? const [],
               onSelect: (part, s, e, t, n) => onSelect(it.block, part, s, e, t, n),
+              onRead: onRead == null ? null : (part, st) => onRead(it.block, part, st),
             ),
           )
         else
@@ -37,6 +39,9 @@ Widget pageContent(
               marks: shiftMarks(marks[it.block] ?? const [], it.start, it.end),
               onSelect: (part, s, e, t, n) =>
                   onSelect(it.block, part, s + it.start, e + it.start, t, n),
+              onRead: onRead == null
+                  ? null
+                  : (part, st) => onRead(it.block, part, st + it.start),
             ),
             first: it.start == 0,
           ),

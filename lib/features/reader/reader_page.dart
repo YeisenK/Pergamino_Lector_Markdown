@@ -248,6 +248,22 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
     }
   }
 
+  /// «Leer desde aquí»: empieza la lectura en voz alta en la frase tocada.
+  void _readFrom(BookContent c, int block, int part, int offset) {
+    final style = _cachedStyle;
+    if (style == null) return;
+    final features = ref.read(featuresProvider);
+    final sk = features.contains(Feature.voiceSkip);
+    final settings = ref.read(settingsProvider);
+    _read.start(c, style,
+        fromBlock: block,
+        part: part,
+        offset: offset,
+        tables: sk && settings.voiceTables,
+        code: sk && settings.voiceCode,
+        footnotes: !sk || settings.voiceFootnotes);
+  }
+
   // ---- modo paginado ----
 
   Widget _pagedView(BookContent c, ReaderStyle style, Map<int, List<Mark>> marks,
@@ -267,6 +283,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
             style,
             marks,
             (block, part, s, e, t, note) => _onSelect(c, block, part, s, e, t, note),
+            onRead: (block, part, start) => _readFrom(c, block, part, start),
           ),
         ),
       ),
@@ -623,6 +640,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
                 marks: marksByBlock[i] ?? const [],
                 onSelect: (part, s, e, t, note) =>
                     _onSelect(c, i, part, s, e, t, note),
+                onRead: (part, start) => _readFrom(c, i, part, start),
               ),
             ),
           ),
