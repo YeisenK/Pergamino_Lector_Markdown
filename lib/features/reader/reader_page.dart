@@ -33,8 +33,10 @@ import 'sleep_sheet.dart';
 import 'typography_sheet.dart';
 
 class ReaderPage extends ConsumerStatefulWidget {
-  const ReaderPage({super.key, required this.bookId});
+  const ReaderPage({super.key, required this.bookId, this.startFraction});
   final String bookId;
+  /// Posición de inicio (0–1) cuando se abre desde la búsqueda general.
+  final double? startFraction;
 
   @override
   ConsumerState<ReaderPage> createState() => _ReaderPageState();
@@ -473,7 +475,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
     if (book == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final settings = ref.watch(settingsProvider);
+    final ReaderSettings settings =
+        ref.watch(bookOverridesProvider)[widget.bookId] ?? ref.watch(settingsProvider);
     final palette = settings.resolve(MediaQuery.platformBrightnessOf(context));
     final content = ref.watch(bookContentProvider(book.path));
 
@@ -506,14 +509,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
         startWords: (book.progress * _totalWords).round(),
       );
     }
-    final initial = book.progress <= 0
+    final startAt = widget.startFraction ?? book.progress;
+    final initial = startAt <= 0
         ? 0
-        : (book.progress * (_total - 1)).floor().clamp(0, _total - 1);
+        : (startAt * (_total - 1)).floor().clamp(0, _total - 1);
     if (!_restored) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _restored = true;
-          _progress = book.progress;
+          _progress = startAt;
           _first = initial;
           _last = initial;
         }
@@ -885,7 +889,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> with WidgetsBindingObse
                     tooltip: 'Tipografía y tema',
                     icon: const Icon(Icons.text_fields),
                     color: palette.text,
-                    onPressed: () => showTypographySheet(context),
+                    onPressed: () => showTypographySheet(context, bookId: widget.bookId),
                   ),
                 ]),
               ),

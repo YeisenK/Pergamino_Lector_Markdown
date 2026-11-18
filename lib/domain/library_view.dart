@@ -41,10 +41,12 @@ List<Book> applyLibraryView(
   LibraryFilter filter = LibraryFilter.todos,
   LibrarySort sort = LibrarySort.ultimoLeido,
   String query = '',
+  String? collection,
 }) {
   final q = foldText(query.trim());
   final out = books.where((b) {
     if (q.isNotEmpty && !foldText(b.title).contains(q)) return false;
+    if (collection != null && b.collection != collection) return false;
     return switch (filter) {
       LibraryFilter.todos => true,
       LibraryFilter.leyendo => b.progress > 0 && !isFinished(b),

@@ -142,6 +142,17 @@ class BooksNotifier extends AsyncNotifier<List<Book>> {
     return true;
   }
 
+  Future<void> setCollection(String id, String? name) async {
+    final n = name?.trim();
+    await _save([
+      for (final b in state.value ?? [])
+        if (b.id == id)
+          b.copyWith(collection: (n == null || n.isEmpty) ? null : n, clearCollection: n == null || n.isEmpty)
+        else
+          b
+    ]);
+  }
+
   Future<void> setCoverTitle(String id, bool show) async {
     await _save([
       for (final b in state.value ?? [])

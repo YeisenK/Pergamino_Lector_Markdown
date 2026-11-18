@@ -6,23 +6,54 @@ import '../../app/theme.dart';
 import '../../data/features.dart';
 import '../../data/settings.dart';
 
-Future<void> showTypographySheet(BuildContext context) => showModalBottomSheet(
+Future<void> showTypographySheet(BuildContext context, {String? bookId}) =>
+    showModalBottomSheet(
       context: context,
       barrierColor: Colors.transparent, // se ve el texto cambiar en vivo
       isScrollControlled: true,
       showDragHandle: true,
       constraints: const BoxConstraints(maxWidth: 560),
-      builder: (_) => const TypographySheet(),
+      builder: (_) => TypographySheet(bookId: bookId),
     );
 
+/// Escribe en los ajustes propios del libro si los tiene; si no, en los generales.
+class _Setter {
+  _Setter(this.ref, this.bookId);
+  final WidgetRef ref;
+  final String? bookId;
+
+  bool get own => bookId != null && ref.read(bookOverridesProvider).containsKey(bookId);
+
+  void update(ReaderSettings v) {
+    if (own) {
+      ref.read(bookOverridesProvider.notifier).set(bookId!, v);
+    } else {
+      ref.read(settingsProvider.notifier).update(v);
+    }
+  }
+
+  void reset() {
+    final current = ref.read(settingsProvider);
+    if (own) {
+      ref.read(bookOverridesProvider.notifier).set(bookId!, ReaderSettings(palette: current.palette));
+    } else {
+      ref.read(settingsProvider.notifier).reset();
+    }
+  }
+}
+
 class TypographySheet extends ConsumerWidget {
-  const TypographySheet({super.key, this.paletteOnly = false});
+  const TypographySheet({super.key, this.paletteOnly = false, this.bookId});
   final bool paletteOnly;
+  final String? bookId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final s = ref.watch(settingsProvider);
-    final n = ref.read(settingsProvider.notifier);
+    final overrides = ref.watch(bookOverridesProvider);
+    final ReaderSettings s =
+        (bookId == null ? null : overrides[bookId!]) ?? ref.watch(settingsProvider);
+    final n = _Setter(ref, bookId);
+    final hasOwn = bookId != null && overrides.containsKey(bookId);
     final scheme = Theme.of(context).colorScheme;
     final label = Theme.of(context).textTheme.labelLarge!;
 
@@ -70,6 +101,22 @@ class TypographySheet extends ConsumerWidget {
                     onTap: () => n.update(s.copyWith(palette: p))),
             ]),
           ),
+          if (!paletteOnly && bookId != null) ...[
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Ajustes solo para este libro'),
+              subtitle: const Text('Este libro conserva su letra y colores aunque cambies los generales'),
+              value: hasOwn,
+              onChanged: (v) {
+                final g = ref.read(settingsProvider);
+                if (v) {
+                  ref.read(bookOverridesProvider.notifier).set(bookId!, g);
+                } else {
+                  ref.read(bookOverridesProvider.notifier).remove(bookId!);
+                }
+              },
+            ),
+          ],
           if (!paletteOnly) ...[
             const SizedBox(height: 14),
             slider('Tamaño', s.fontSize, 12, 36, s.fontSize.round().toString(),

@@ -187,3 +187,39 @@ class SettingsNotifier extends Notifier<ReaderSettings> {
 
   void reset() => update(ReaderSettings(palette: state.palette));
 }
+
+const _kBookSettings = 'book_settings_v1';
+
+/// Ajustes propios de un libro (solo los libros que los tienen aparecen aquí).
+final bookOverridesProvider =
+    NotifierProvider<BookOverridesNotifier, Map<String, ReaderSettings>>(
+        BookOverridesNotifier.new);
+
+class BookOverridesNotifier extends Notifier<Map<String, ReaderSettings>> {
+  @override
+  Map<String, ReaderSettings> build() {
+    final raw = ref.read(prefsProvider).getString(_kBookSettings);
+    if (raw == null) return {};
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      return {
+        for (final e in m.entries)
+          e.key: ReaderSettings.fromJson(e.value as Map<String, dynamic>)
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  void _save(Map<String, ReaderSettings> m) {
+    state = m;
+    ref.read(prefsProvider).setString(_kBookSettings,
+        jsonEncode({for (final e in m.entries) e.key: e.value.toJson()}));
+  }
+
+  /// Crea o cambia los ajustes propios de [bookId].
+  void set(String bookId, ReaderSettings s) => _save({...state, bookId: s});
+
+  /// Quita los ajustes propios: el libro vuelve a los ajustes generales.
+  void remove(String bookId) => _save(Map.of(state)..remove(bookId));
+}

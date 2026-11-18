@@ -9,6 +9,7 @@ class Book {
   final double progress; // 0..1
   final String? coverPath; // portada elegida por el usuario (opcional)
   final bool coverTitle; // mostrar el nombre sobre la portada
+  final String? collection; // colección (carpeta lógica), opcional
 
   const Book({
     required this.id,
@@ -19,6 +20,7 @@ class Book {
     this.progress = 0,
     this.coverPath,
     this.coverTitle = true,
+    this.collection,
   });
 
   Book copyWith({
@@ -28,6 +30,8 @@ class Book {
     String? coverPath,
     bool clearCover = false,
     bool? coverTitle,
+    String? collection,
+    bool clearCollection = false,
   }) =>
       Book(
         id: id,
@@ -38,6 +42,7 @@ class Book {
         progress: progress ?? this.progress,
         coverPath: clearCover ? null : (coverPath ?? this.coverPath),
         coverTitle: coverTitle ?? this.coverTitle,
+        collection: clearCollection ? null : (collection ?? this.collection),
       );
 
   Book withPath(String newPath) => Book(
@@ -49,6 +54,7 @@ class Book {
         progress: progress,
         coverPath: coverPath,
         coverTitle: coverTitle,
+        collection: collection,
       );
 
   Map<String, dynamic> toJson() => {
@@ -60,6 +66,7 @@ class Book {
         'progress': progress,
         'cover': coverPath,
         'coverTitle': coverTitle,
+        'collection': collection,
       };
 
   factory Book.fromJson(Map<String, dynamic> j) => Book(
@@ -73,6 +80,7 @@ class Book {
         progress: (j['progress'] as num?)?.toDouble() ?? 0,
         coverPath: j['cover'] as String?,
         coverTitle: j['coverTitle'] as bool? ?? true,
+        collection: j['collection'] as String?,
       );
 
   static String encodeList(List<Book> books) =>

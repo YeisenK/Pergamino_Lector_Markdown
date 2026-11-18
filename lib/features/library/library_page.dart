@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../data/book_repository.dart';
 import '../../data/features.dart';
 import '../../data/library_prefs.dart';
+import '../../domain/library_search.dart';
 import '../../domain/library_view.dart';
 import '../../data/bookmarks.dart';
 import '../../data/highlights.dart';
@@ -25,6 +26,7 @@ class LibraryPage extends ConsumerStatefulWidget {
 
 class _LibraryPageState extends ConsumerState<LibraryPage> {
   String _query = '';
+  String? _collection;
 
 
   final Set<String> _selected = {};
@@ -124,6 +126,32 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     if (mounted) setState(_selected.clear);
   }
 
+  Future<void> _setCollection(Book b) async {
+    final ctrl = TextEditingController(text: b.collection ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Colección'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Nombre (vacío para quitarla)',
+          ),
+          onSubmitted: (v) => Navigator.pop(c, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(c, ctrl.text), child: const Text('Guardar')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (name == null) return;
+    await ref.read(booksProvider.notifier).setCollection(b.id, name);
+    if (mounted) setState(_selected.clear);
+  }
+
   Future<void> _pickCover(Book b) async {
     final res = await FilePicker.pickFiles(type: FileType.image);
     final path = res.isEmpty ? null : res.first.path;
@@ -185,6 +213,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                   await _rename(one);
                 case 'cover':
                   await _pickCover(one);
+                case 'collection':
+                  await _setCollection(one);
                 case 'finish':
                   await ref.read(booksProvider.notifier).setFinished(one.id, one.progress < .98);
                   if (mounted) setState(_selected.clear);
@@ -203,6 +233,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'rename', child: Text('Renombrar')),
               const PopupMenuItem(value: 'cover', child: Text('Cambiar portada')),
+              const PopupMenuItem(value: 'collection', child: Text('Mover a colección…')),
               PopupMenuItem(
                 value: 'finish',
                 child: Text(one.progress >= .98 ? 'Marcar como no terminado' : 'Marcar como terminado'),
@@ -277,6 +308,10 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                               onSelected: (v) => context.push(v),
                               itemBuilder: (_) => [
                                 const PopupMenuItem(
+                                  value: '/buscar',
+                                  child: Text('Buscar en todos los libros'),
+                                ),
+                                const PopupMenuItem(
                                   value: '/features',
                                   child: Text('Funciones'),
                                 ),
@@ -341,6 +376,9 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                   child: _ViewBar(
                     view: ref.watch(libraryViewProvider),
                     onChanged: (v) => ref.read(libraryViewProvider.notifier).update(v),
+                    collections: collectionsOf(all),
+                    collection: _collection,
+                    onCollection: (c) => setState(() => _collection = c),
                   ),
                 ),
               books.when(
@@ -357,6 +395,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                     filter: filtersOn ? view.filter : LibraryFilter.todos,
                     sort: filtersOn ? view.sort : LibrarySort.ultimoLeido,
                     query: _query,
+                    collection: filtersOn ? _collection : null,
                   );
                   if (list.isEmpty) {
                     return SliverFillRemaining(
@@ -568,9 +607,18 @@ class _BookCard extends StatelessWidget {
 }
 
 class _ViewBar extends StatelessWidget {
-  const _ViewBar({required this.view, required this.onChanged});
+  const _ViewBar({
+    required this.view,
+    required this.onChanged,
+    required this.collections,
+    required this.collection,
+    required this.onCollection,
+  });
   final LibraryView view;
   final ValueChanged<LibraryView> onChanged;
+  final List<String> collections;
+  final String? collection;
+  final ValueChanged<String?> onCollection;
 
   @override
   Widget build(BuildContext context) {
@@ -592,6 +640,17 @@ class _ViewBar extends StatelessWidget {
                         onSelected: (_) => onChanged(view.copyWith(filter: f)),
                       ),
                     ),
+                  if (collections.isNotEmpty)
+                    for (final c in collections)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          avatar: const Icon(Icons.folder_outlined, size: 16),
+                          label: Text(c),
+                          selected: collection == c,
+                          onSelected: (on) => onCollection(on ? c : null),
+                        ),
+                      ),
                 ],
               ),
             ),
