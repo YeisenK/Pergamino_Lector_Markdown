@@ -11,7 +11,7 @@ import 'package:path_provider/path_provider.dart';
 /// Datos: Wiktionary en español vía kaikki.org (CC BY-SA 4.0).
 
 const dictionaryUrl =
-    'https://github.com/YeisenK/Pergamino_Lector_Markdown/releases/download/diccionario-es-v1/es.txt.gz';
+    'https://raw.githubusercontent.com/YeisenK/Pergamino_Lector_Markdown/main/diccionario/es.txt.gz';
 const dictionaryDownloadMb = 11;
 const dictionaryInstalledMb = 125;
 
