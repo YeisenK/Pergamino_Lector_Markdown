@@ -2,7 +2,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../data/book_repository.dart';
 import '../../data/highlights.dart';
+import 'quote_share.dart';
 
 Future<void> showHighlightSheet(BuildContext context, String id) =>
     showModalBottomSheet(
@@ -114,6 +116,19 @@ class _HighlightSheetState extends ConsumerState<HighlightSheet> {
                 ),
               ),
             const Spacer(),
+            IconButton(
+              tooltip: 'Compartir como imagen',
+              icon: const Icon(Icons.image_outlined),
+              onPressed: () => showQuoteShare(
+                context,
+                h,
+                ref.read(booksProvider).value
+                        ?.where((b) => b.id == h.bookId)
+                        .firstOrNull
+                        ?.title ??
+                    '',
+              ),
+            ),
             IconButton(
               tooltip: 'Copiar',
               icon: const Icon(Icons.copy),
