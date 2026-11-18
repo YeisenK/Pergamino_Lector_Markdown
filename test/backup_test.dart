@@ -52,7 +52,7 @@ void main() {
   test('una copia de otra versión se rechaza sin tocar nada', () async {
     final bad = Uint8List.fromList(
         ZipEncoder().encode(Archive()..addFile(ArchiveFile.string('backup.json',
-            '{"app":"Pergamino","version":99,"prefs":{}}'))) ?? []);
+            '{"app":"Pergamino","version":99,"prefs":{}}'))));
     SharedPreferences.setMockInitialValues({'books_v1': '[]'});
     final prefs = await SharedPreferences.getInstance();
     await expectLater(
